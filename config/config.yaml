@@ -1,0 +1,38 @@
+app:
+  name: "avtofast-api"
+  environment: "development"
+  port: 8080
+  prefork: false
+
+postgres:
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  password: "password"
+  database: "avtofast"
+  ssl_mode: "disable"
+  max_conns: 80
+  min_conns: 20
+  max_conn_lifetime: 30m
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+  pool_size: 100
+
+jwt:
+  secret_key: "avtofast-super-secure-dev-secret-key-32b"
+  issuer: "https://api.avtotest.uz/auth"
+  audience: "avtofast-api"
+
+features:
+  friends: false
+  weekly_challenges: false
+  voice_explanations: false
+  ai_mistake_analysis: false
+
+rules:
+  exam_question_count: 20
+  exam_duration_sec: 1200
+  exam_pass_count: 16

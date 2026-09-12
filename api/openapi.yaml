@@ -1,0 +1,249 @@
+openapi: 3.1.0
+info:
+  title: AvtoFast Core API
+  version: 1.0.0
+  description: High-performance production API contract for AvtoFast learning platform.
+servers:
+  - url: https://api.avtotest.uz/v1
+    description: Production Server
+  - url: http://localhost:8080/v1
+    description: Local Development Server
+
+paths:
+  /bootstrap:
+    get:
+      summary: App bootstrap configuration
+      responses:
+        '200':
+          description: Configuration loaded
+  /me:
+    get:
+      summary: Get user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User state hydrated
+    patch:
+      summary: Update avatar/profile metadata
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile updated
+  /me/onboarding:
+    put:
+      summary: Save onboarding state
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Onboarding saved
+  /me/preferences:
+    patch:
+      summary: Update preferences
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Preferences updated
+  /me/notification-preferences:
+    patch:
+      summary: Update notification preferences
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Notification preferences updated
+
+  /content/packs:
+    get:
+      summary: Pack catalogue
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Pack catalogue
+  /content/packs/{packId}/manifest:
+    get:
+      summary: Signed pack manifest
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Pack manifest with Ed25519 signature
+  /content/packs/{packId}/questions:
+    get:
+      summary: Online question bank (correct answers omitted)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: locale
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Paginated questions list
+  /content/packs/{packId}/offline-download:
+    post:
+      summary: Short-lived signed download URL
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Signed download package URL
+
+  /practice-sessions:
+    post:
+      summary: Create adaptive/category/mistake practice session
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Session created with ordered questions
+  /practice-sessions/{sessionId}/answers:
+    post:
+      summary: Submit practice answer
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Answer evaluated, spaced-repetition updated
+  /practice-sessions/{sessionId}/complete:
+    post:
+      summary: Finalize practice session
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Score and progress finalized
+
+  /review/mistakes:
+    get:
+      summary: Scheduled incorrect questions for repeat study
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Mistake review queue
+
+  /mock-exams:
+    post:
+      summary: Create official format timed mock exam
+      security:
+        - BearerAuth: []
+      responses:
+        '201':
+          description: Exam created with 20 questions and deadline
+    get:
+      summary: Paginated exam attempt history
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Paginated exam attempts
+  /mock-exams/{examId}/answers/{questionId}:
+    put:
+      summary: Persist in-progress answer
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Answer saved
+        '409':
+          description: Exam expired or completed
+  /mock-exams/{examId}/submit:
+    post:
+      summary: Submit mock exam for server-grade scoring
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Server graded pass/fail and full review
+
+  /dashboard:
+    get:
+      summary: Dashboard snapshot
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Compact snapshot
+  /analytics/progress:
+    get:
+      summary: Progress analytics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Time series and category accuracy
+
+  /sync/events:
+    post:
+      summary: Idempotent offline event synchronization
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Batch event acceptance report
+  /sync/changes:
+    get:
+      summary: Cursor-based changes to merge
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Changes stream
+
+  /entitlements:
+    get:
+      summary: Premium entitlement status
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Entitlement summary
+  /billing/verify:
+    post:
+      summary: Verify store purchase receipt
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Verified entitlement
+  /billing/restore:
+    post:
+      summary: Reconcile purchases
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Reconciled entitlement
+  /devices/{deviceId}/push-token:
+    put:
+      summary: Register device push token
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Device token registered
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

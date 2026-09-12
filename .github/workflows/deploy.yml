@@ -1,0 +1,126 @@
+name: Auto Deploy to Production (api.avtotest.uz)
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+# Prevent overlapping deployments to maintain database and container consistency
+concurrency:
+  group: production_deployment
+  cancel-in-progress: false
+
+jobs:
+  ci-check:
+    name: Run Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: Test under Race Detector
+        run: go test -v -race ./...
+
+  build-and-push:
+    name: Build & Push Container Image
+    needs: ci-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Production Server
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Remote Deployment via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            APP_DIR="/opt/avtofast"
+            mkdir -p $APP_DIR
+
+            echo "==> 1. Log in to GitHub Container Registry"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            echo "==> 2. Pull latest container image"
+            IMAGE="ghcr.io/${{ github.repository }}:latest"
+            docker pull $IMAGE
+
+            cd $APP_DIR
+
+            echo "==> 3. Run Database Migrations before starting new container"
+            # Runs the migration tool in an ephemeral container connected to the database network
+            docker run --rm \
+              --network avtofast-back_default \
+              --env-file .env \
+              $IMAGE /app/bin/migrate -dir=up
+
+            echo "==> 4. Rolling restart of API container (Zero Downtime)"
+            # Update the container image in docker-compose
+            docker compose -f docker-compose.prod.yml up -d --no-deps api
+
+            echo "==> 5. Verifying Health Endpoint"
+            sleep 3
+            HEALTH_URL="http://127.0.0.1:8080/healthz"
+            for i in {1..10}; do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" $HEALTH_URL || true)
+              if [ "$STATUS" = "200" ]; then
+                echo "==> API is healthy (HTTP 200 OK)"
+                exit 0
+              fi
+              echo "Waiting for health check... ($i/10)"
+              sleep 2
+            done
+
+            echo "==> Health check failed! Check container logs:"
+            docker logs --tail 50 avtofast_api
+            exit 1
