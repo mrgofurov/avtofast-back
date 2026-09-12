@@ -97,18 +97,16 @@ jobs:
 
             cd $APP_DIR
 
-            echo "==> 3. Run Database Migrations before starting new container"
-            # Runs the migration tool in an ephemeral container connected to the database network
-            docker run --rm \
-              --network avtofast-back_default \
-              --env-file .env \
-              $IMAGE /app/bin/migrate -dir=up
+            echo "==> 3. Ensure database and cache services are running"
+            docker compose -f docker-compose.prod.yml up -d postgres redis
 
-            echo "==> 4. Rolling restart of API container (Zero Downtime)"
-            # Update the container image in docker-compose
+            echo "==> 4. Run Database Migrations"
+            docker compose -f docker-compose.prod.yml run --rm api /app/bin/migrate -dir=up
+
+            echo "==> 5. Rolling restart of API container (Zero Downtime)"
             docker compose -f docker-compose.prod.yml up -d --no-deps api
 
-            echo "==> 5. Verifying Health Endpoint"
+            echo "==> 6. Verifying Health Endpoint"
             sleep 3
             HEALTH_URL="http://127.0.0.1:8080/healthz"
             for i in {1..10}; do

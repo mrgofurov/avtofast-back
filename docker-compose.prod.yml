@@ -99,3 +99,7 @@ services:
 volumes:
   pgdata:
   redisdata:
+
+networks:
+  default:
+    name: avtofast_network
