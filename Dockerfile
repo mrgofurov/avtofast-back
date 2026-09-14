@@ -20,6 +20,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/migrate ./cmd/migrate
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/seed ./cmd/seed
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/scraper ./cmd/scraper
 
 # --- Stage 2: Production Minimal Runtime ---
 FROM alpine:3.20
@@ -36,6 +37,7 @@ RUN apk --no-cache add ca-certificates tzdata curl
 COPY --from=builder /app/bin/api /app/bin/api
 COPY --from=builder /app/bin/migrate /app/bin/migrate
 COPY --from=builder /app/bin/seed /app/bin/seed
+COPY --from=builder /app/bin/scraper /app/bin/scraper
 
 # Copy database migrations and default config
 COPY --from=builder /app/migrations /app/migrations

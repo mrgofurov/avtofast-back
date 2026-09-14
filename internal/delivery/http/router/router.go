@@ -71,6 +71,9 @@ func SetupRoutes(cfg RouterConfig) {
 		return c.Redirect("/docs", fiber.StatusMovedPermanently)
 	})
 
+	// Static Uploads (questions, videos, audios)
+	app.Static("/uploads", "./uploads")
+
 	// V1 API Group
 	v1 := app.Group("/v1")
 

@@ -133,7 +133,8 @@ func (r *ContentRepository) GetQuestionsByPack(ctx context.Context, packID, cate
 	}
 
 	query := fmt.Sprintf(`SELECT q.id, q.public_id, q.pack_table_id, q.pack_id, q.content_version, q.category, q.difficulty,
-	                             q.image_url, q.image_sha256, q.image_alt, q.source_reference, q.source_effective_from,
+	                             q.image_url, q.image_sha256, q.image_alt, q.video_url, q.audio_url, q.external_id,
+	                             q.source_reference, q.source_effective_from,
 	                             q.source_official_url, q.correct_choice_id, q.status
 	                      FROM questions q %s ORDER BY q.public_id ASC LIMIT $%d`, whereClause, argIdx)
 	args = append(args, limit+1)
@@ -150,14 +151,27 @@ func (r *ContentRepository) GetQuestionsByPack(ctx context.Context, packID, cate
 	for rows.Next() {
 		var q domain.Question
 		var imgURL, imgSHA, srcRef, srcOff *string
+		var videoURL, audioURL *string
+		var extID *int64
 		var srcEff *time.Time
 		var imgAltRaw []byte
 
 		if err := rows.Scan(
 			&q.ID, &q.PublicID, &q.PackTableID, &q.PackID, &q.ContentVersion, &q.Category, &q.Difficulty,
-			&imgURL, &imgSHA, &imgAltRaw, &srcRef, &srcEff, &srcOff, &q.CorrectChoiceID, &q.Status,
+			&imgURL, &imgSHA, &imgAltRaw, &videoURL, &audioURL, &extID,
+			&srcRef, &srcEff, &srcOff, &q.CorrectChoiceID, &q.Status,
 		); err != nil {
 			return nil, "", err
+		}
+
+		if videoURL != nil {
+			q.VideoURL = *videoURL
+		}
+		if audioURL != nil {
+			q.AudioURL = *audioURL
+		}
+		if extID != nil {
+			q.ExternalID = *extID
 		}
 
 		if imgURL != nil && *imgURL != "" {
@@ -207,23 +221,37 @@ func (r *ContentRepository) GetQuestionsByPack(ctx context.Context, packID, cate
 
 func (r *ContentRepository) GetQuestionByID(ctx context.Context, questionPublicID string) (*domain.Question, error) {
 	query := `SELECT q.id, q.public_id, q.pack_table_id, q.pack_id, q.content_version, q.category, q.difficulty,
-	                 q.image_url, q.image_sha256, q.image_alt, q.source_reference, q.source_effective_from,
+	                 q.image_url, q.image_sha256, q.image_alt, q.video_url, q.audio_url, q.external_id,
+	                 q.source_reference, q.source_effective_from,
 	                 q.source_official_url, q.correct_choice_id, q.status
 	          FROM questions q WHERE q.public_id = $1`
 	var q domain.Question
 	var imgURL, imgSHA, srcRef, srcOff *string
+	var videoURL, audioURL *string
+	var extID *int64
 	var srcEff *time.Time
 	var imgAltRaw []byte
 
 	err := r.db.Pool.QueryRow(ctx, query, questionPublicID).Scan(
 		&q.ID, &q.PublicID, &q.PackTableID, &q.PackID, &q.ContentVersion, &q.Category, &q.Difficulty,
-		&imgURL, &imgSHA, &imgAltRaw, &srcRef, &srcEff, &srcOff, &q.CorrectChoiceID, &q.Status,
+		&imgURL, &imgSHA, &imgAltRaw, &videoURL, &audioURL, &extID,
+		&srcRef, &srcEff, &srcOff, &q.CorrectChoiceID, &q.Status,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
+	}
+
+	if videoURL != nil {
+		q.VideoURL = *videoURL
+	}
+	if audioURL != nil {
+		q.AudioURL = *audioURL
+	}
+	if extID != nil {
+		q.ExternalID = *extID
 	}
 
 	if imgURL != nil && *imgURL != "" {
@@ -260,7 +288,8 @@ func (r *ContentRepository) GetQuestionsByIDs(ctx context.Context, questionPubli
 		return nil, nil
 	}
 	query := `SELECT q.id, q.public_id, q.pack_table_id, q.pack_id, q.content_version, q.category, q.difficulty,
-	                 q.image_url, q.image_sha256, q.image_alt, q.source_reference, q.source_effective_from,
+	                 q.image_url, q.image_sha256, q.image_alt, q.video_url, q.audio_url, q.external_id,
+	                 q.source_reference, q.source_effective_from,
 	                 q.source_official_url, q.correct_choice_id, q.status
 	          FROM questions q WHERE q.public_id = ANY($1)`
 	rows, err := r.db.Pool.Query(ctx, query, questionPublicIDs)
@@ -274,14 +303,26 @@ func (r *ContentRepository) GetQuestionsByIDs(ctx context.Context, questionPubli
 	for rows.Next() {
 		var q domain.Question
 		var imgURL, imgSHA, srcRef, srcOff *string
+		var videoURL, audioURL *string
+		var extID *int64
 		var srcEff *time.Time
 		var imgAltRaw []byte
 
 		if err := rows.Scan(
 			&q.ID, &q.PublicID, &q.PackTableID, &q.PackID, &q.ContentVersion, &q.Category, &q.Difficulty,
-			&imgURL, &imgSHA, &imgAltRaw, &srcRef, &srcEff, &srcOff, &q.CorrectChoiceID, &q.Status,
+			&imgURL, &imgSHA, &imgAltRaw, &videoURL, &audioURL, &extID,
+			&srcRef, &srcEff, &srcOff, &q.CorrectChoiceID, &q.Status,
 		); err != nil {
 			return nil, err
+		}
+		if videoURL != nil {
+			q.VideoURL = *videoURL
+		}
+		if audioURL != nil {
+			q.AudioURL = *audioURL
+		}
+		if extID != nil {
+			q.ExternalID = *extID
 		}
 		if imgURL != nil && *imgURL != "" {
 			var alt map[string]string
@@ -382,12 +423,41 @@ func (r *ContentRepository) CreateQuestion(ctx context.Context, q *domain.Questi
 		srcOff = &q.Source.OfficialSourceURL
 	}
 
-	query := `INSERT INTO questions (public_id, pack_table_id, pack_id, content_version, category, difficulty, image_url, image_sha256, image_alt, source_reference, source_official_url, correct_choice_id, status, created_at, updated_at)
-	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+	query := `INSERT INTO questions (public_id, pack_table_id, pack_id, content_version, category, difficulty, image_url, image_sha256, image_alt, video_url, audio_url, external_id, source_reference, source_official_url, correct_choice_id, status, created_at, updated_at)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+	          ON CONFLICT (public_id) DO UPDATE SET
+	              pack_table_id = EXCLUDED.pack_table_id,
+	              pack_id = EXCLUDED.pack_id,
+	              content_version = EXCLUDED.content_version,
+	              category = EXCLUDED.category,
+	              difficulty = EXCLUDED.difficulty,
+	              image_url = EXCLUDED.image_url,
+	              image_sha256 = EXCLUDED.image_sha256,
+	              image_alt = EXCLUDED.image_alt,
+	              video_url = EXCLUDED.video_url,
+	              audio_url = EXCLUDED.audio_url,
+	              external_id = EXCLUDED.external_id,
+	              source_reference = EXCLUDED.source_reference,
+	              source_official_url = EXCLUDED.source_official_url,
+	              correct_choice_id = EXCLUDED.correct_choice_id,
+	              status = EXCLUDED.status,
+	              updated_at = NOW()
 	          RETURNING id`
+	var videoURL, audioURL *string
+	if q.VideoURL != "" {
+		videoURL = &q.VideoURL
+	}
+	if q.AudioURL != "" {
+		audioURL = &q.AudioURL
+	}
+	var extID *int64
+	if q.ExternalID > 0 {
+		extID = &q.ExternalID
+	}
+
 	err := r.db.Pool.QueryRow(ctx, query,
 		q.PublicID, q.PackTableID, q.PackID, q.ContentVersion, q.Category, q.Difficulty,
-		imgURL, imgSHA, imgAlt, srcRef, srcOff, q.CorrectChoiceID, q.Status,
+		imgURL, imgSHA, imgAlt, videoURL, audioURL, extID, srcRef, srcOff, q.CorrectChoiceID, q.Status,
 	).Scan(&q.ID)
 	if err != nil {
 		return err

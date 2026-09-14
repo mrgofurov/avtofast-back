@@ -13,6 +13,8 @@ services:
       - API_BASE_URL=https://api.avtofast.uz/v1
     ports:
       - "127.0.0.1:8080:8080"
+    volumes:
+      - ./uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy

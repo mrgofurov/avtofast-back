@@ -5,6 +5,7 @@ build:
 	go build -o bin/api ./cmd/api
 	go build -o bin/migrate ./cmd/migrate
 	go build -o bin/seed ./cmd/seed
+	go build -o bin/scraper ./cmd/scraper
 
 test:
 	go test -v ./...
@@ -26,3 +27,6 @@ migrate-down:
 
 seed:
 	go run ./cmd/seed/main.go
+
+scrape:
+	go run ./cmd/scraper/main.go

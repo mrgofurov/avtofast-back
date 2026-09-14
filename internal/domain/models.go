@@ -141,6 +141,9 @@ type Question struct {
 	Category        string                              `json:"category"`
 	Difficulty      string                              `json:"difficulty"`
 	Image           *QuestionImage                      `json:"image,omitempty"`
+	VideoURL        string                              `json:"videoUrl,omitempty"`
+	AudioURL        string                              `json:"audioUrl,omitempty"`
+	ExternalID      int64                               `json:"externalId,omitempty"`
 	Source          *QuestionSource                     `json:"source,omitempty"`
 	CorrectChoiceID string                              `json:"-"` // never exposed in online question payload
 	Translations    map[string]QuestionTranslationData `json:"translations,omitempty"`
@@ -155,6 +158,8 @@ type ClientQuestionPayload struct {
 	Category       string          `json:"category"`
 	Difficulty     string          `json:"difficulty"`
 	Image          *QuestionImage  `json:"image,omitempty"`
+	VideoURL       string          `json:"videoUrl,omitempty"`
+	AudioURL       string          `json:"audioUrl,omitempty"`
 	Source         *QuestionSource `json:"source,omitempty"`
 	Prompt         string          `json:"prompt"`
 	Choices        []ChoiceItem    `json:"choices"`
@@ -173,6 +178,8 @@ func (q *Question) ToClientPayload(locale string) ClientQuestionPayload {
 		Category:       q.Category,
 		Difficulty:     q.Difficulty,
 		Image:          q.Image,
+		VideoURL:       q.VideoURL,
+		AudioURL:       q.AudioURL,
 		Source:         q.Source,
 		Prompt:         tr.Prompt,
 		Choices:        tr.Choices,
