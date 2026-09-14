@@ -21,7 +21,7 @@ func main() {
 	cfg, err := config.Load("config/config.yaml")
 	if err != nil {
 		log.Error("Failed to load config", err)
-		return
+		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -30,7 +30,7 @@ func main() {
 	db, err := postgres.NewPool(ctx, cfg)
 	if err != nil {
 		log.Error("Failed to connect to database for migrations", err)
-		return
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -44,13 +44,13 @@ func main() {
 	sqlContent, err := os.ReadFile(file)
 	if err != nil {
 		log.Error("Failed to read migration file: "+file, err)
-		return
+		os.Exit(1)
 	}
 
 	_, err = db.Pool.Exec(ctx, string(sqlContent))
 	if err != nil {
 		log.Error("Migration execution failed", err)
-		return
+		os.Exit(1)
 	}
 
 	log.Info("Migrations applied successfully!")
