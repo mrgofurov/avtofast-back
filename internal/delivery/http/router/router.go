@@ -3,6 +3,7 @@ package router
 import (
 	"time"
 
+	"github.com/avtofast/avtofast-back/api"
 	"github.com/avtofast/avtofast-back/internal/delivery/http/handler"
 	"github.com/avtofast/avtofast-back/internal/delivery/http/middleware"
 	"github.com/avtofast/avtofast-back/internal/domain"
@@ -53,6 +54,21 @@ func SetupRoutes(cfg RouterConfig) {
 	// Health Check
 	app.Get("/healthz", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok", "timestamp": time.Now().UTC()})
+	})
+
+	// OpenAPI Spec & Interactive Documentation
+	app.Get("/openapi.yaml", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/yaml; charset=utf-8")
+		return c.Send(api.OpenAPISpec)
+	})
+
+	app.Get("/docs", func(c *fiber.Ctx) error {
+		c.Set("Content-Type", "text/html; charset=utf-8")
+		return c.SendString(api.SwaggerUIHTML)
+	})
+
+	app.Get("/swagger", func(c *fiber.Ctx) error {
+		return c.Redirect("/docs", fiber.StatusMovedPermanently)
 	})
 
 	// V1 API Group

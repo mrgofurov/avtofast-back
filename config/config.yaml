@@ -23,7 +23,7 @@ redis:
 
 jwt:
   secret_key: "avtofast-super-secure-dev-secret-key-32b"
-  issuer: "https://api.avtotest.uz/auth"
+  issuer: "https://api.avtofast.uz/auth"
   audience: "avtofast-api"
 
 features:

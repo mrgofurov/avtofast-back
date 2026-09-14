@@ -74,7 +74,7 @@ func main() {
 			Category:       domain.CategoryRoadSigns,
 			Difficulty:     domain.DifficultyEasy,
 			Image: &domain.QuestionImage{
-				URL:    "https://api.avtotest.uz/assets/questions/sign-014.webp",
+				URL:    "https://api.avtofast.uz/assets/questions/sign-014.webp",
 				SHA256: "d3b07384d113edec49eaa6238ad5ff00",
 				Alt:    map[string]string{domain.LocaleUzLatn: "Sariq romb shaklidagi yo'l belgisi"},
 			},

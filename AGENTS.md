@@ -7,7 +7,7 @@ This document defines the architecture, conventions, technology stack, and engin
 ## 1. Project Overview & Business Domain
 
 **AvtoFast** is a high-performance driving theory learning platform tailored for Uzbekistan driver examination preparation.
-- **Production API Domain**: `https://api.avtotest.uz/v1`
+- **Production API Domain**: `https://api.avtofast.uz/v1`
 - **Supported Languages**: Uzbek Latin (`uz-Latn-UZ`), Uzbek Cyrillic (`uz-Cyrl-UZ`), Russian (`ru`), English (`en`).
 - **Target Performance**: **>50,000 requests per second (RPC)** on an 8-core CPU / 8GB RAM / 100GB SSD production node.
 

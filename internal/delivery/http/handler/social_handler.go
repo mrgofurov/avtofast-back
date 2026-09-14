@@ -85,7 +85,7 @@ func (h *SocialHandler) PostSpeechExplanation(c *fiber.Ctx) error {
 		return nil
 	}
 	return c.JSON(fiber.Map{
-		"audioUrl": "https://api.avtotest.uz/assets/audio/mock.mp3",
+		"audioUrl": "https://api.avtofast.uz/assets/audio/mock.mp3",
 	})
 }
 

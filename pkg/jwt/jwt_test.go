@@ -13,7 +13,7 @@ func TestJWTVerification(t *testing.T) {
 	secret := "my-very-secret-test-key-32-chars-long"
 	verifier := jwt.NewVerifier(jwt.VerifierConfig{
 		SecretKey:        secret,
-		ExpectedIssuer:   "https://api.avtotest.uz/auth",
+		ExpectedIssuer:   "https://api.avtofast.uz/auth",
 		ExpectedAudience: "avtofast-api",
 	})
 

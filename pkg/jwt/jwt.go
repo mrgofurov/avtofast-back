@@ -126,7 +126,7 @@ func GenerateTestToken(sub, role, secret string, duration time.Duration, email .
 	claims := jwt.MapClaims{
 		"sub":      sub,
 		"role":     role,
-		"iss":      "https://api.avtotest.uz/auth",
+		"iss":      "https://api.avtofast.uz/auth",
 		"aud":      "avtofast-api",
 		"provider": "firebase",
 		"email":    userEmail,

@@ -192,6 +192,17 @@ func (s *TestSuite) doRequest(method, url string, body any, token string, header
 func TestE2E_P0_CompleteFlow(t *testing.T) {
 	s := setupE2ETest(t)
 
+	// 0. API Documentation & OpenAPI Specification
+	t.Run("GET /docs & /openapi.yaml", func(t *testing.T) {
+		respDocs := s.doRequest("GET", "/docs", nil, "")
+		assert.Equal(t, fiber.StatusOK, respDocs.StatusCode)
+		assert.Contains(t, respDocs.Header.Get("Content-Type"), "text/html")
+
+		respSpec := s.doRequest("GET", "/openapi.yaml", nil, "")
+		assert.Equal(t, fiber.StatusOK, respSpec.StatusCode)
+		assert.Contains(t, respSpec.Header.Get("Content-Type"), "text/yaml")
+	})
+
 	// 1. GET /v1/bootstrap
 	t.Run("GET /v1/bootstrap", func(t *testing.T) {
 		resp := s.doRequest("GET", "/v1/bootstrap", nil, "")

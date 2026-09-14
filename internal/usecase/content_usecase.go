@@ -172,7 +172,7 @@ func (u *ContentUsecase) GetOfflineDownloadURL(ctx context.Context, userID int64
 	}
 
 	expiresAt := time.Now().UTC().Add(1 * time.Hour)
-	downloadURL := fmt.Sprintf("https://api.avtotest.uz/v1/content/packs/%s/download?version=%s&expires=%d", packID, manifest.Version, expiresAt.Unix())
+	downloadURL := fmt.Sprintf("https://api.avtofast.uz/v1/content/packs/%s/download?version=%s&expires=%d", packID, manifest.Version, expiresAt.Unix())
 
 	return &OfflineDownloadResponse{
 		URL:       downloadURL,

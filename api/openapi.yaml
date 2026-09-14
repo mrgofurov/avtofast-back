@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: High-performance production API contract for AvtoFast learning platform.
 servers:
-  - url: https://api.avtotest.uz/v1
+  - url: https://api.avtofast.uz/v1
     description: Production Server
   - url: http://localhost:8080/v1
     description: Local Development Server

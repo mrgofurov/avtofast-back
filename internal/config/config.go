@@ -80,7 +80,7 @@ func Load(path string) (*Config, error) {
 	cfg.App.Environment = "development"
 	cfg.App.Port = 8080
 	cfg.App.Prefork = false
-	cfg.App.APIBaseURL = "https://api.avtotest.uz/v1"
+	cfg.App.APIBaseURL = "https://api.avtofast.uz/v1"
 
 	cfg.Postgres.Host = "localhost"
 	cfg.Postgres.Port = 5432
@@ -96,7 +96,7 @@ func Load(path string) (*Config, error) {
 	cfg.Redis.PoolSize = 100
 
 	cfg.JWT.SecretKey = "avtofast-super-secure-dev-secret-key-32b"
-	cfg.JWT.Issuer = "https://api.avtotest.uz/auth"
+	cfg.JWT.Issuer = "https://api.avtofast.uz/auth"
 	cfg.JWT.Audience = "avtofast-api"
 
 	cfg.Rules.ExamQuestionCount = 20

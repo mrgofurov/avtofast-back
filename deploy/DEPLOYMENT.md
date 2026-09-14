@@ -1,6 +1,6 @@
 # AvtoFast Production Deployment Methodology
 
-This guide explains the step-by-step deployment methodology for hosting the **AvtoFast** backend on an 8-core CPU / 8GB RAM / 100GB SSD production node at `api.avtotest.uz`.
+This guide explains the step-by-step deployment methodology for hosting the **AvtoFast** backend on an 8-core CPU / 8GB RAM / 100GB SSD production node at `api.avtofast.uz`.
 
 ---
 
@@ -16,7 +16,7 @@ This guide explains the step-by-step deployment methodology for hosting the **Av
 [Build Multi-stage Docker Image] ───► Push to GitHub Container Registry (ghcr.io)
        │
        ▼
-[Deploy via SSH to api.avtotest.uz]
+[Deploy via SSH to api.avtofast.uz]
        │
        ├─► 1. Pull latest image from GHCR
        ├─► 2. Run Database Migrations (`bin/migrate -dir=up`)
@@ -30,11 +30,11 @@ This guide explains the step-by-step deployment methodology for hosting the **Av
 ## 2. Server Prerequisites (One-Time Setup)
 
 ### 2.1. DNS Configuration
-Point the A record of `api.avtotest.uz` to your production server IP:
+Point the A record of `api.avtofast.uz` to your production server IP:
 ```
 Type: A
 Host: api
-Domain: avtotest.uz
+Domain: avtofast.uz
 Value: <YOUR_SERVER_IP>
 TTL: 300
 ```
@@ -72,20 +72,20 @@ cp .env.example /opt/avtofast/.env
 Edit `/opt/avtofast/.env` and supply production values:
 - `POSTGRES_PASSWORD=<strong_random_password>`
 - `JWT_SECRET=<strong_jwt_secret>`
-- `API_BASE_URL=https://api.avtotest.uz/v1`
+- `API_BASE_URL=https://api.avtofast.uz/v1`
 
 ### 2.4. SSL Certificate Setup via Certbot & Nginx
 Install Certbot and Nginx:
 ```bash
 sudo apt-get install -y nginx certbot python3-certbot-nginx
 
-# Obtain SSL Certificate for api.avtotest.uz
-sudo certbot --nginx -d api.avtotest.uz
+# Obtain SSL Certificate for api.avtofast.uz
+sudo certbot --nginx -d api.avtofast.uz
 ```
-Copy `deploy/nginx.conf` to `/etc/nginx/sites-available/api.avtotest.uz`:
+Copy `deploy/nginx.conf` to `/etc/nginx/sites-available/api.avtofast.uz`:
 ```bash
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/api.avtotest.uz
-sudo ln -sf /etc/nginx/sites-available/api.avtotest.uz /etc/nginx/sites-enabled/
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/api.avtofast.uz
+sudo ln -sf /etc/nginx/sites-available/api.avtofast.uz /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -98,7 +98,7 @@ In your GitHub repository, go to **Settings ➔ Secrets and variables ➔ Action
 
 | Secret Name | Description | Example |
 | --- | --- | --- |
-| `SERVER_HOST` | Production server IP or hostname | `api.avtotest.uz` or `123.45.67.89` |
+| `SERVER_HOST` | Production server IP or hostname | `api.avtofast.uz` or `123.45.67.89` |
 | `SERVER_USER` | SSH user on the production server | `root` or `deploy` |
 | `SSH_PRIVATE_KEY` | Private SSH key authorized in `~/.ssh/authorized_keys` | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
 | `SSH_PORT` | SSH port (defaults to 22 if omitted) | `22` |
