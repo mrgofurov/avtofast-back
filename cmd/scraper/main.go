@@ -134,9 +134,9 @@ type Downloader struct {
 	log        *logger.Logger
 }
 
-func (d *Downloader) downloadMedia(rawURL, subDir, defaultExt string) (localPath string, publicURL string, sha256Hex string, err error) {
+func (d *Downloader) downloadMedia(rawURL, subDir, defaultExt string) (relPath string, sha256Hex string, err error) {
 	if rawURL == "" {
-		return "", "", "", nil
+		return "", "", nil
 	}
 
 	ext := filepath.Ext(strings.Split(rawURL, "?")[0])
@@ -145,12 +145,12 @@ func (d *Downloader) downloadMedia(rawURL, subDir, defaultExt string) (localPath
 	}
 
 	uuidName := newUUID() + ext
-	targetRelPath := filepath.Join("uploads", subDir, uuidName)
+	relPath = fmt.Sprintf("%s/%s", subDir, uuidName)
 	targetDiskPath := filepath.Join(d.uploadDir, subDir, uuidName)
 
 	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64)")
 	if d.cookie != "" {
@@ -159,17 +159,17 @@ func (d *Downloader) downloadMedia(rawURL, subDir, defaultExt string) (localPath
 
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", "", fmt.Errorf("HTTP %d downloading %s", resp.StatusCode, rawURL)
+		return "", "", fmt.Errorf("HTTP %d downloading %s", resp.StatusCode, rawURL)
 	}
 
 	outFile, err := os.Create(targetDiskPath)
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 	defer outFile.Close()
 
@@ -178,13 +178,12 @@ func (d *Downloader) downloadMedia(rawURL, subDir, defaultExt string) (localPath
 
 	_, err = io.Copy(mw, resp.Body)
 	if err != nil {
-		return "", "", "", err
+		return "", "", err
 	}
 
 	sha256Hex = hex.EncodeToString(hasher.Sum(nil))
-	publicURL = fmt.Sprintf("%s/%s", strings.TrimRight(d.baseURL, "/"), targetRelPath)
 
-	return targetRelPath, publicURL, sha256Hex, nil
+	return relPath, sha256Hex, nil
 }
 
 type TokenStore struct {
@@ -332,7 +331,7 @@ func main() {
 		pack = &domain.QuestionPack{
 			PackID:        *packIDFlag,
 			Version:       "2026.09.1",
-			Title:         "O'zbekiston haydovchilik nazariyasi (Prepdrive to'plami)",
+			Title:         "O'zbekiston haydovchilik nazariyasi",
 			Locales:       []string{domain.LocaleUzLatn, domain.LocaleUzCyrl, domain.LocaleRu, domain.LocaleEn},
 			QuestionCount: 0,
 			DownloadBytes: 0,
@@ -500,7 +499,7 @@ func main() {
 							Alt: map[string]string{domain.LocaleUzLatn: primaryImg.AltText},
 						}
 					} else {
-						_, pubURL, sha, err := downloader.downloadMedia(imgSourceURL, "questions", ".webp")
+						relPath, sha, err := downloader.downloadMedia(imgSourceURL, "questions", ".webp")
 						if err != nil {
 							log.Error(fmt.Sprintf("Failed downloading image for %s: %s", publicID, imgSourceURL), err)
 							img = &domain.QuestionImage{
@@ -510,7 +509,7 @@ func main() {
 						} else {
 							totalImages++
 							img = &domain.QuestionImage{
-								URL:    pubURL,
+								URL:    relPath,
 								SHA256: sha,
 								Alt:    map[string]string{domain.LocaleUzLatn: primaryImg.AltText},
 							}
@@ -532,13 +531,13 @@ func main() {
 					if *skipMediaFlag {
 						videoURL = vidSourceURL
 					} else {
-						_, pubURL, _, err := downloader.downloadMedia(vidSourceURL, "videos", ".mp4")
+						relPath, _, err := downloader.downloadMedia(vidSourceURL, "videos", ".mp4")
 						if err != nil {
 							log.Error(fmt.Sprintf("Failed downloading video for %s", publicID), err)
 							videoURL = vidSourceURL
 						} else {
 							totalVideos++
-							videoURL = pubURL
+							videoURL = relPath
 						}
 					}
 				}
@@ -553,11 +552,11 @@ func main() {
 				if *skipMediaFlag {
 					finalAudioURL = audioURL
 				} else {
-					_, pubURL, _, err := downloader.downloadMedia(audioURL, "audios", ".mp3")
+					relPath, _, err := downloader.downloadMedia(audioURL, "audios", ".mp3")
 					if err != nil {
 						finalAudioURL = audioURL
 					} else {
-						finalAudioURL = pubURL
+						finalAudioURL = relPath
 					}
 				}
 			}
@@ -576,7 +575,7 @@ func main() {
 				VideoURL:        videoURL,
 				AudioURL:        finalAudioURL,
 				ExternalID:      pq.ID,
-				Source:          &domain.QuestionSource{Reference: "YHQ (Prepdrive)"},
+				Source:          &domain.QuestionSource{Reference: "YHQ"},
 				CorrectChoiceID: correctChoiceID,
 				Status:          "published",
 				Translations: map[string]domain.QuestionTranslationData{
