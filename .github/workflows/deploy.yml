@@ -101,6 +101,8 @@ jobs:
             set -e
             APP_DIR="/opt/avtofast"
             mkdir -p $APP_DIR
+            mkdir -p $APP_DIR/uploads/questions $APP_DIR/uploads/videos $APP_DIR/uploads/audios
+            chmod -R 777 $APP_DIR/uploads
 
             echo "==> 1. Log in to GitHub Container Registry"
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin

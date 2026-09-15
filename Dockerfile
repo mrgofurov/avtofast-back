@@ -44,8 +44,9 @@ COPY --from=builder /app/migrations /app/migrations
 COPY --from=builder /app/config /app/config
 COPY --from=builder /app/.env.example /app/.env.example
 
-# Set ownership to unprivileged user
-RUN chown -R appuser:appgroup /app
+# Create uploads directories and set ownership to unprivileged user
+RUN mkdir -p /app/uploads/questions /app/uploads/videos /app/uploads/audios && \
+    chown -R appuser:appgroup /app
 
 USER appuser
 

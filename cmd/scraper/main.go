@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -186,8 +187,75 @@ func (d *Downloader) downloadMedia(rawURL, subDir, defaultExt string) (localPath
 	return targetRelPath, publicURL, sha256Hex, nil
 }
 
+type TokenStore struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+func saveTokens(acc, ref string) {
+	b, _ := json.MarshalIndent(TokenStore{AccessToken: acc, RefreshToken: ref}, "", "  ")
+	_ = os.WriteFile(".prepdrive_tokens.json", b, 0644)
+}
+
+func loadTokens() (string, string) {
+	b, err := os.ReadFile(".prepdrive_tokens.json")
+	if err != nil {
+		return "", ""
+	}
+	var ts TokenStore
+	if err := json.Unmarshal(b, &ts); err == nil {
+		return ts.AccessToken, ts.RefreshToken
+	}
+	return "", ""
+}
+
+func refreshAccessToken(refreshToken string) (string, string, error) {
+	url := "https://cdn.prepdrive.uz/api/auth/refresh-token"
+	payload := map[string]string{"refresh_token": refreshToken}
+	b, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Language", "uz")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", err
+	}
+
+	var res struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+		Data    struct {
+			AccessToken  string `json:"access_token"`
+			RefreshToken string `json:"refresh_token"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &res); err != nil {
+		return "", "", fmt.Errorf("decode error: %w (body: %s)", err, string(respBody))
+	}
+	if !res.Success || res.Data.AccessToken == "" {
+		return "", "", fmt.Errorf("%s (status: %d)", res.Message, resp.StatusCode)
+	}
+
+	saveTokens(res.Data.AccessToken, res.Data.RefreshToken)
+	return res.Data.AccessToken, res.Data.RefreshToken, nil
+}
+
 func main() {
 	tokenFlag := flag.String("token", "", "Prepdrive Bearer token (without 'Bearer ' prefix)")
+	refreshTokenFlag := flag.String("refresh-token", "", "Prepdrive refresh token for automatic token rotation")
 	cookieFlag := flag.String("cookie", "", "Prepdrive Cookie header string")
 	startFlag := flag.Int("start", 1, "Template start ID (default: 1)")
 	endFlag := flag.Int("end", 63, "Template end ID (default: 63)")
@@ -200,13 +268,25 @@ func main() {
 	log := logger.DefaultLogger
 	log.Info("=== Starting AvtoFast Question Importer / Scraper ===")
 
-	// Resolve token: flag > ENV
+	// Load previously saved tokens if available
+	savedAcc, savedRef := loadTokens()
+
+	// Resolve token: flag > ENV > saved
 	token := *tokenFlag
 	if token == "" {
 		token = os.Getenv("PREPDRIVE_TOKEN")
 	}
 	if token == "" {
-		token = "578755|4ivpM4AqAUXxtV2bARtZM1VSlABGJ8B0TcRXtLJ42642a81a"
+		token = savedAcc
+	}
+
+	// Resolve refresh token: flag > ENV > saved
+	refreshToken := *refreshTokenFlag
+	if refreshToken == "" {
+		refreshToken = os.Getenv("PREPDRIVE_REFRESH_TOKEN")
+	}
+	if refreshToken == "" {
+		refreshToken = savedRef
 	}
 
 	cookie := *cookieFlag
@@ -308,6 +388,21 @@ func main() {
 		}
 
 		if resp.StatusCode == http.StatusUnauthorized {
+			if refreshToken != "" {
+				log.Info("Token expired (401). Attempting automatic refresh...")
+				newAcc, newRef, err := refreshAccessToken(refreshToken)
+				if err == nil && newAcc != "" {
+					token = newAcc
+					if newRef != "" {
+						refreshToken = newRef
+					}
+					log.Info("Successfully refreshed token! Retrying template...")
+					templateID-- // Retry current template
+					continue
+				}
+				log.Error("Failed refreshing token", err)
+			}
+
 			log.Error("Prepdrive API returned 401 UNAUTHORIZED. Please supply a valid -token and -cookie.", nil)
 			fmt.Println("\n[ERROR]: Sizning Prepdrive Bearer tokeningiz eskirgan yoki noto'g'ri!")
 			fmt.Println("Iltimos, Chrome DevTools (F12) -> Network bo'limidan cdn.prepdrive.uz so'rovi Authorization tokenini nusxalab quyidagicha ishga tushiring:")
@@ -477,6 +572,7 @@ func main() {
 				VideoURL:        videoURL,
 				AudioURL:        finalAudioURL,
 				ExternalID:      pq.ID,
+				Source:          &domain.QuestionSource{Reference: "YHQ (Prepdrive)"},
 				CorrectChoiceID: correctChoiceID,
 				Status:          "published",
 				Translations: map[string]domain.QuestionTranslationData{

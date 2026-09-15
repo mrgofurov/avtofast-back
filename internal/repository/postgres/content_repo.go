@@ -410,17 +410,24 @@ func (r *ContentRepository) UpdatePack(ctx context.Context, pack *domain.Questio
 
 func (r *ContentRepository) CreateQuestion(ctx context.Context, q *domain.Question) error {
 	var imgURL, imgSHA *string
-	var imgAlt []byte
+	imgAlt := []byte("{}")
 	if q.Image != nil {
 		imgURL = &q.Image.URL
 		imgSHA = &q.Image.SHA256
-		imgAlt, _ = json.Marshal(q.Image.Alt)
+		if q.Image.Alt != nil {
+			if b, err := json.Marshal(q.Image.Alt); err == nil && len(b) > 0 {
+				imgAlt = b
+			}
+		}
 	}
 
-	var srcRef, srcOff *string
+	srcRef := ""
+	var srcOff *string
 	if q.Source != nil {
-		srcRef = &q.Source.Reference
-		srcOff = &q.Source.OfficialSourceURL
+		srcRef = q.Source.Reference
+		if q.Source.OfficialSourceURL != "" {
+			srcOff = &q.Source.OfficialSourceURL
+		}
 	}
 
 	query := `INSERT INTO questions (public_id, pack_table_id, pack_id, content_version, category, difficulty, image_url, image_sha256, image_alt, video_url, audio_url, external_id, source_reference, source_official_url, correct_choice_id, status, created_at, updated_at)
@@ -481,17 +488,24 @@ func (r *ContentRepository) CreateQuestion(ctx context.Context, q *domain.Questi
 
 func (r *ContentRepository) UpdateQuestion(ctx context.Context, q *domain.Question) error {
 	var imgURL, imgSHA *string
-	var imgAlt []byte
+	imgAlt := []byte("{}")
 	if q.Image != nil {
 		imgURL = &q.Image.URL
 		imgSHA = &q.Image.SHA256
-		imgAlt, _ = json.Marshal(q.Image.Alt)
+		if q.Image.Alt != nil {
+			if b, err := json.Marshal(q.Image.Alt); err == nil && len(b) > 0 {
+				imgAlt = b
+			}
+		}
 	}
 
-	var srcRef, srcOff *string
+	srcRef := ""
+	var srcOff *string
 	if q.Source != nil {
-		srcRef = &q.Source.Reference
-		srcOff = &q.Source.OfficialSourceURL
+		srcRef = q.Source.Reference
+		if q.Source.OfficialSourceURL != "" {
+			srcOff = &q.Source.OfficialSourceURL
+		}
 	}
 
 	query := `UPDATE questions SET category = $1, difficulty = $2, image_url = $3, image_sha256 = $4, image_alt = $5,
