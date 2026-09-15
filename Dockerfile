@@ -21,6 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/migrate ./cmd/migrate
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/seed ./cmd/seed
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/scraper ./cmd/scraper
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /app/bin/token ./cmd/token
 
 # --- Stage 2: Production Minimal Runtime ---
 FROM alpine:3.20
@@ -38,6 +39,7 @@ COPY --from=builder /app/bin/api /app/bin/api
 COPY --from=builder /app/bin/migrate /app/bin/migrate
 COPY --from=builder /app/bin/seed /app/bin/seed
 COPY --from=builder /app/bin/scraper /app/bin/scraper
+COPY --from=builder /app/bin/token /app/bin/token
 
 # Copy database migrations and default config
 COPY --from=builder /app/migrations /app/migrations
