@@ -256,6 +256,7 @@ func refreshAccessToken(refreshToken string) (string, string, error) {
 func main() {
 	tokenFlag := flag.String("token", "", "Prepdrive Bearer token (without 'Bearer ' prefix)")
 	refreshTokenFlag := flag.String("refresh-token", "", "Prepdrive refresh token for automatic token rotation")
+	refreshShortFlag := flag.String("refresh", "", "Alias for -refresh-token")
 	cookieFlag := flag.String("cookie", "", "Prepdrive Cookie header string")
 	startFlag := flag.Int("start", 1, "Template start ID (default: 1)")
 	endFlag := flag.Int("end", 63, "Template end ID (default: 63)")
@@ -282,6 +283,9 @@ func main() {
 
 	// Resolve refresh token: flag > ENV > saved
 	refreshToken := *refreshTokenFlag
+	if refreshToken == "" {
+		refreshToken = *refreshShortFlag
+	}
 	if refreshToken == "" {
 		refreshToken = os.Getenv("PREPDRIVE_REFRESH_TOKEN")
 	}
