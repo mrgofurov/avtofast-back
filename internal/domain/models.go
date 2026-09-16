@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -165,21 +166,55 @@ type ClientQuestionPayload struct {
 	Choices        []ChoiceItem    `json:"choices"`
 }
 
+// MediaMountPath is where question media is served from. Media is stored with
+// a bare relative path ("questions/<uuid>.webp"), which on its own is not
+// resolvable by a client: joined to the API origin it would miss this mount.
+// The path is therefore prefixed on the way out, so every client only has to
+// join the origin to what it is given.
+const MediaMountPath = "/medias/"
+
+// PublicMediaPath makes a stored media path resolvable against the API origin.
+// An absolute URL or an already-prefixed path is returned unchanged, so this
+// stays safe to apply more than once.
+func PublicMediaPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		return path
+	}
+	if strings.HasPrefix(path, MediaMountPath) || strings.HasPrefix(path, "/uploads/") {
+		return path
+	}
+	return MediaMountPath + strings.TrimPrefix(path, "/")
+}
+
 func (q *Question) ToClientPayload(locale string) ClientQuestionPayload {
 	tr, ok := q.Translations[locale]
 	if !ok {
 		// fallback to uz-Latn-UZ
 		tr = q.Translations[LocaleUzLatn]
 	}
+
+	image := q.Image
+	if image != nil {
+		// Copied rather than mutated: the stored question is shared between
+		// concurrent requests, and rewriting its URL in place would prefix it
+		// again on every one of them.
+		withPublicURL := *image
+		withPublicURL.URL = PublicMediaPath(image.URL)
+		image = &withPublicURL
+	}
+
 	return ClientQuestionPayload{
 		ID:             q.PublicID,
 		PackId:         q.PackID,
 		ContentVersion: q.ContentVersion,
 		Category:       q.Category,
 		Difficulty:     q.Difficulty,
-		Image:          q.Image,
-		VideoURL:       q.VideoURL,
-		AudioURL:       q.AudioURL,
+		Image:          image,
+		VideoURL:       PublicMediaPath(q.VideoURL),
+		AudioURL:       PublicMediaPath(q.AudioURL),
 		Source:         q.Source,
 		Prompt:         tr.Prompt,
 		Choices:        tr.Choices,

@@ -1,9 +1,11 @@
 package e2e_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/avtofast/avtofast-back/internal/domain"
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -177,4 +179,58 @@ func TestE2E_DashboardDailyGoalTracksToday(t *testing.T) {
 	assert.Zero(t, snapshot.DailyGoal.Completed, "nothing answered today")
 	assert.Positive(t, snapshot.DailyGoal.Target)
 	assert.Zero(t, snapshot.ReadinessScore, "a learner who has answered nothing is not ready")
+}
+
+// Question media has to be resolvable by a client that only knows the API
+// origin.
+func TestE2E_QuestionMediaPathsAreResolvable(t *testing.T) {
+	s := setupE2ETest(t)
+
+	ctx := context.Background()
+	require.NoError(t, s.Store.CreateQuestion(ctx, &domain.Question{
+		PublicID:        "media-001",
+		PackID:          "uz-theory-2026-09",
+		ContentVersion:  "2026.09.1",
+		Category:        domain.CategoryRoadSigns,
+		Difficulty:      domain.DifficultyEasy,
+		CorrectChoiceID: "a",
+		Status:          "published",
+		Source:          &domain.QuestionSource{Reference: "YHQ 1.1"},
+		// Stored the way the scraper writes it: a bare relative path.
+		Image:    &domain.QuestionImage{URL: "questions/abc.webp", SHA256: "x"},
+		VideoURL: "videos/abc.mp4",
+		Translations: map[string]domain.QuestionTranslationData{
+			domain.LocaleUzLatn: {
+				Prompt:  "Media savoli?",
+				Choices: []domain.ChoiceItem{{ID: "a", Text: "A", Position: 1}},
+			},
+		},
+	}))
+
+	resp := s.doRequest("GET", "/v1/content/packs/uz-theory-2026-09/questions?limit=100", nil, s.UserToken)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Items []struct {
+			ID    string `json:"id"`
+			Image *struct {
+				URL string `json:"url"`
+			} `json:"image"`
+			VideoURL string `json:"videoUrl"`
+		} `json:"items"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	var found bool
+	for _, item := range body.Items {
+		if item.ID != "media-001" {
+			continue
+		}
+		found = true
+		require.NotNil(t, item.Image)
+		assert.Equal(t, "/medias/questions/abc.webp", item.Image.URL,
+			"a client joining this to the API origin must reach the file")
+		assert.Equal(t, "/medias/videos/abc.mp4", item.VideoURL)
+	}
+	assert.True(t, found, "the seeded media question should be listed")
 }
