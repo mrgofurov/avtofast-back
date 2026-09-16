@@ -802,11 +802,14 @@ func (m *MemoryStore) GetAnalyticsProgress(ctx context.Context, userID int64, da
 }
 
 // Sync
-func (m *MemoryStore) SaveSyncEvent(ctx context.Context, event *domain.SyncEventItem, userID int64) error {
+func (m *MemoryStore) SaveSyncEvent(ctx context.Context, event *domain.SyncEventItem, userID int64) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, seen := m.SyncEvents[event.ID]; seen {
+		return false, nil
+	}
 	m.SyncEvents[event.ID] = event
-	return nil
+	return true, nil
 }
 
 func (m *MemoryStore) GetChangesSince(ctx context.Context, userID int64, cursor string) (*domain.SyncChangesResponse, error) {

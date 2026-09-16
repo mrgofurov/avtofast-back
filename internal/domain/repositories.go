@@ -14,13 +14,13 @@ type UserRepository interface {
 	// App Store Review Guideline 5.1.1(v): deletion has to be a real delete,
 	// reachable from inside the app, not a deactivation.
 	DeleteUser(ctx context.Context, userID int64) error
-	
+
 	GetOnboarding(ctx context.Context, userID int64) (*UserOnboarding, error)
 	SaveOnboarding(ctx context.Context, onboarding *UserOnboarding) error
-	
+
 	GetPreferences(ctx context.Context, userID int64) (*UserPreferences, error)
 	UpdatePreferences(ctx context.Context, prefs *UserPreferences) error
-	
+
 	GetNotificationPreferences(ctx context.Context, userID int64) (*NotificationPreferences, error)
 	UpdateNotificationPreferences(ctx context.Context, prefs *NotificationPreferences) error
 }
@@ -45,7 +45,7 @@ type ContentRepository interface {
 	GetQuestionByID(ctx context.Context, questionPublicID string) (*Question, error)
 	GetQuestionsByIDs(ctx context.Context, questionPublicIDs []string) ([]*Question, error)
 	GetRandomQuestions(ctx context.Context, packID string, count int, category string) ([]*Question, error)
-	
+
 	// Admin operations
 	CreatePack(ctx context.Context, pack *QuestionPack) error
 	UpdatePack(ctx context.Context, pack *QuestionPack) error
@@ -96,7 +96,10 @@ type DashboardRepository interface {
 }
 
 type SyncRepository interface {
-	SaveSyncEvent(ctx context.Context, event *SyncEventItem, userID int64) error
+	// SaveSyncEvent stores one offline event, reporting whether it was new.
+	// A client that retries an upload sends the same event ids again, and
+	// only a first sighting may be applied to the learner's progress.
+	SaveSyncEvent(ctx context.Context, event *SyncEventItem, userID int64) (isNew bool, err error)
 	GetChangesSince(ctx context.Context, userID int64, cursor string) (*SyncChangesResponse, error)
 }
 

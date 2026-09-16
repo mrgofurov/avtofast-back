@@ -170,7 +170,7 @@ func main() {
 	practiceUsecase := usecase.NewPracticeUsecase(practiceRepo, contentRepo, mistakeRepo, dashRepo, entRepo)
 	mockExamUsecase := usecase.NewMockExamUsecase(mockExamRepo, contentRepo, dashRepo, mistakeRepo, cfg)
 	dashUsecase := usecase.NewDashboardUsecase(dashRepo, mistakeRepo, userRepo)
-	syncUsecase := usecase.NewSyncUsecase(syncRepo)
+	syncUsecase := usecase.NewSyncUsecase(syncRepo, contentRepo, mistakeRepo, dashRepo)
 	billingUsecase := usecase.NewBillingUsecase(entRepo, deviceRepo)
 	adminUsecase := usecase.NewAdminUsecase(contentRepo, auditRepo, cfg)
 

@@ -27,12 +27,12 @@ func NewContentUsecase(contentRepo domain.ContentRepository, entRepo domain.Enti
 }
 
 type BootstrapResponse struct {
-	MinimumSupportedAppVersion string           `json:"minimumSupportedAppVersion"`
-	DefaultLocale              string           `json:"defaultLocale"`
-	SupportedLocales           []string         `json:"supportedLocales"`
-	ExamRules                  ExamRulesConfig  `json:"examRules"`
-	ActiveQuestionPack         *ActivePackInfo  `json:"activeQuestionPack"`
-	Features                   map[string]bool  `json:"features"`
+	MinimumSupportedAppVersion string          `json:"minimumSupportedAppVersion"`
+	DefaultLocale              string          `json:"defaultLocale"`
+	SupportedLocales           []string        `json:"supportedLocales"`
+	ExamRules                  ExamRulesConfig `json:"examRules"`
+	ActiveQuestionPack         *ActivePackInfo `json:"activeQuestionPack"`
+	Features                   map[string]bool `json:"features"`
 }
 
 type ExamRulesConfig struct {

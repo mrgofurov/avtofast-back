@@ -27,15 +27,20 @@ func NewSyncRepository(db *DB, userRepo *UserRepository, entRepo *EntitlementRep
 	}
 }
 
-func (r *SyncRepository) SaveSyncEvent(ctx context.Context, event *domain.SyncEventItem, userID int64) error {
+func (r *SyncRepository) SaveSyncEvent(ctx context.Context, event *domain.SyncEventItem, userID int64) (bool, error) {
 	payloadBytes, _ := json.Marshal(event.Payload)
 	query := `INSERT INTO sync_events (public_id, user_id, event_type, occurred_at, pack_id, pack_version, payload, synced_at)
 	          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 	          ON CONFLICT (public_id) DO NOTHING`
-	_, err := r.db.Pool.Exec(ctx, query,
+	tag, err := r.db.Pool.Exec(ctx, query,
 		event.ID, userID, event.Type, event.OccurredAt, event.PackID, event.PackVersion, payloadBytes,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	// The unique constraint on public_id is what makes replay safe: a second
+	// upload of the same event inserts nothing and is reported as not new.
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *SyncRepository) GetChangesSince(ctx context.Context, userID int64, cursor string) (*domain.SyncChangesResponse, error) {

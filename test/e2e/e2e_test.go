@@ -122,7 +122,7 @@ func setupE2ETest(t *testing.T) *TestSuite {
 	practiceUsecase := usecase.NewPracticeUsecase(mem, mem, mem, mem, mem)
 	mockExamUsecase := usecase.NewMockExamUsecase(mem, mem, mem, mem, cfg)
 	dashUsecase := usecase.NewDashboardUsecase(mem, mem, mem)
-	syncUsecase := usecase.NewSyncUsecase(mem)
+	syncUsecase := usecase.NewSyncUsecase(mem, mem, mem, mem)
 	billingUsecase := usecase.NewBillingUsecase(mem, mem)
 	adminUsecase := usecase.NewAdminUsecase(mem, mem, cfg)
 	// No Firebase project in tests: the exchange endpoint must refuse rather
