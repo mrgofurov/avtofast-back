@@ -84,14 +84,19 @@ func (h *ProfileHandler) PutOnboarding(c *fiber.Ctx) error {
 		return response.BadRequest(c, "INVALID_GOAL", "dailyQuestionGoal must be between 1 and 100", nil)
 	}
 
-	// Validate targetExamDate not before today
-	examDate, err := time.Parse("2006-01-02", req.TargetExamDate)
-	if err != nil {
-		return response.BadRequest(c, "INVALID_DATE", "targetExamDate must be in YYYY-MM-DD format", nil)
-	}
-	today := time.Now().Truncate(24 * time.Hour)
-	if examDate.Before(today) {
-		return response.BadRequest(c, "INVALID_DATE", "targetExamDate must not be in the past", nil)
+	// "I don't know yet" is a real answer to when the exam is, and the one
+	// most learners give on first run. It is stored as an empty date rather
+	// than rejected, so onboarding is never blocked on a decision they have
+	// not made. A date that *is* given still has to be a future one.
+	if req.TargetExamDate != "" {
+		examDate, err := time.Parse("2006-01-02", req.TargetExamDate)
+		if err != nil {
+			return response.BadRequest(c, "INVALID_DATE", "targetExamDate must be in YYYY-MM-DD format", nil)
+		}
+		today := time.Now().Truncate(24 * time.Hour)
+		if examDate.Before(today) {
+			return response.BadRequest(c, "INVALID_DATE", "targetExamDate must not be in the past", nil)
+		}
 	}
 
 	ob := &domain.UserOnboarding{
@@ -135,6 +140,35 @@ func (h *ProfileHandler) PatchPreferences(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(prefs)
+}
+
+func (h *ProfileHandler) GetNotificationPreferences(c *fiber.Ctx) error {
+	userID := c.Locals("userId").(int64)
+	prefs, err := h.profileUsecase.GetNotificationPreferences(c.Context(), userID)
+	if err != nil {
+		return response.Internal(c, "Failed to load notification preferences")
+	}
+	if prefs == nil {
+		prefs = &domain.NotificationPreferences{
+			StudyReminder:    true,
+			StreakProtection: true,
+			MistakeReview:    true,
+			WeeklySummary:    true,
+			ScoreImprovement: true,
+		}
+	}
+	return c.JSON(prefs)
+}
+
+// DeleteMe destroys the account and everything belonging to it.
+//
+// The response is 204 with no body: there is no profile left to return.
+func (h *ProfileHandler) DeleteMe(c *fiber.Ctx) error {
+	userID := c.Locals("userId").(int64)
+	if err := h.profileUsecase.DeleteAccount(c.Context(), userID); err != nil {
+		return response.Internal(c, "Failed to delete account")
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (h *ProfileHandler) PatchNotificationPreferences(c *fiber.Ctx) error {

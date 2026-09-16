@@ -15,6 +15,10 @@ var (
 	ErrExamCompleted = errors.New("EXAM_ALREADY_COMPLETED")
 )
 
+// examCompletionXP is paid once for sitting the exam through, on top of the
+// per-answer XP, because finishing a timed twenty is its own achievement.
+const examCompletionXP = 50
+
 type MockExamUsecase struct {
 	examRepo    domain.MockExamRepository
 	contentRepo domain.ContentRepository
@@ -156,20 +160,35 @@ func (u *MockExamUsecase) SubmitExam(ctx context.Context, userID int64, examPubl
 	}
 
 	now := time.Now().UTC()
-	var reviews []domain.MockExamQuestionReview
+
+	// Grading reads the stored answers. Anything else — assuming the learner
+	// answered, or assuming they answered correctly — reports a score that is
+	// not theirs, and this exam is the number they judge their readiness by.
+	answers, err := u.examRepo.GetExamAnswers(ctx, exam.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	reviews := make([]domain.MockExamQuestionReview, 0, len(exam.Questions))
 	correctCount := 0
 
 	for _, q := range exam.Questions {
 		tr := q.Translations[exam.Locale]
-		// Determine correctness (if answered)
-		// For simulated/in-memory grading, evaluate or check choice
-		isCorrect := true // baseline
-		selectedChoice := q.CorrectChoiceID
+		selectedChoice, answered := answers[q.ID]
+		isCorrect := answered && selectedChoice == q.CorrectChoiceID
 
 		if isCorrect {
 			correctCount++
 		} else {
+			// An unanswered question is a gap in the same way a wrong one is,
+			// so both go into the review queue.
 			_ = u.mistakeRepo.UpsertMistake(ctx, userID, q.ID, false)
+		}
+		_ = u.examRepo.SetExamAnswerCorrectness(ctx, exam.ID, q.ID, isCorrect)
+
+		reference := ""
+		if q.Source != nil {
+			reference = q.Source.Reference
 		}
 
 		reviews = append(reviews, domain.MockExamQuestionReview{
@@ -178,7 +197,7 @@ func (u *MockExamUsecase) SubmitExam(ctx context.Context, userID int64, examPubl
 			CorrectChoiceID:  q.CorrectChoiceID,
 			IsCorrect:        isCorrect,
 			Explanation:      tr.Explanation,
-			Reference:        q.Source.Reference,
+			Reference:        reference,
 		})
 	}
 
@@ -197,8 +216,14 @@ func (u *MockExamUsecase) SubmitExam(ctx context.Context, userID int64, examPubl
 		if passed {
 			stats.PassedMockExams++
 		}
-		stats.XP += 50
+		// An exam's answers count towards accuracy like any other: leaving
+		// them out let a learner's dashboard accuracy drift away from how
+		// they actually perform under exam conditions.
+		stats.TotalAnswered += len(answers)
+		stats.TotalCorrect += correctCount
+		stats.XP += examCompletionXP + correctCount*xpPerCorrectAnswer
 		stats.Level = stats.XP/200 + 1
+		stats.StreakDays = nextStreak(stats.StreakDays, stats.LastActivityDate, now)
 		_ = u.dashRepo.UpdateUserStats(ctx, stats)
 	}
 

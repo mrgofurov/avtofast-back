@@ -16,6 +16,7 @@ import (
 	"github.com/avtofast/avtofast-back/internal/domain"
 	"github.com/avtofast/avtofast-back/internal/repository/memory"
 	"github.com/avtofast/avtofast-back/internal/usecase"
+	"github.com/avtofast/avtofast-back/pkg/firebase"
 	"github.com/avtofast/avtofast-back/pkg/jwt"
 	"github.com/avtofast/avtofast-back/pkg/logger"
 	"github.com/gofiber/fiber/v2"
@@ -24,14 +25,14 @@ import (
 )
 
 type TestSuite struct {
-	App         *fiber.App
-	Store       *memory.MemoryStore
-	Config      *config.Config
-	UserToken   string
-	AdminToken  string
-	UserID      int64
-	UserPubID   string
-	SecretKey   string
+	App        *fiber.App
+	Store      *memory.MemoryStore
+	Config     *config.Config
+	UserToken  string
+	AdminToken string
+	UserID     int64
+	UserPubID  string
+	SecretKey  string
 }
 
 func setupE2ETest(t *testing.T) *TestSuite {
@@ -124,8 +125,20 @@ func setupE2ETest(t *testing.T) *TestSuite {
 	syncUsecase := usecase.NewSyncUsecase(mem)
 	billingUsecase := usecase.NewBillingUsecase(mem, mem)
 	adminUsecase := usecase.NewAdminUsecase(mem, mem, cfg)
+	// No Firebase project in tests: the exchange endpoint must refuse rather
+	// than accept an unverified token, and the guest and refresh paths are
+	// exercised without one.
+	sessionUsecase := usecase.NewSessionUsecase(
+		mem,
+		firebase.NewVerifier(""),
+		jwt.NewIssuer(secret, cfg.JWT.Issuer, cfg.JWT.Audience),
+		verifier,
+		cfg.JWT.AccessTTL,
+		cfg.JWT.RefreshTTL,
+	)
 
 	handlers := &router.Handlers{
+		Session:   handler.NewSessionHandler(sessionUsecase),
 		Bootstrap: handler.NewBootstrapHandler(contentUsecase),
 		Profile:   handler.NewProfileHandler(profileUsecase),
 		Content:   handler.NewContentHandler(contentUsecase),
@@ -389,7 +402,7 @@ func TestE2E_P0_CompleteFlow(t *testing.T) {
 					"occurredAt": time.Now().UTC().Format(time.RFC3339),
 					"packId":     "uz-theory-2026-09",
 					"payload": map[string]any{
-						"questionId": "sign-014",
+						"questionId":       "sign-014",
 						"selectedChoiceId": "a",
 					},
 				},

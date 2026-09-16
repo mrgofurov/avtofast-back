@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	subFlag := flag.String("sub", "usr_dev_test_01", "User subject ID (provider unique ID)")
+	subFlag := flag.String("sub", "dev_test_01", "Provider subject id. A usr_-prefixed value is treated as an existing account's public id and must already exist; anything else creates a dev account on first use.")
 	emailFlag := flag.String("email", "dev@avtofast.uz", "User email")
 	roleFlag := flag.String("role", "user", "User role ('user' or 'content_publisher')")
 	daysFlag := flag.Int("days", 30, "Token validity in days")

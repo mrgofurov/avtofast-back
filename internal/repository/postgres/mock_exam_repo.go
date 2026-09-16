@@ -109,6 +109,33 @@ func (r *MockExamRepository) SaveExamAnswer(ctx context.Context, examID int64, q
 	return err
 }
 
+func (r *MockExamRepository) GetExamAnswers(ctx context.Context, examID int64) (map[int64]string, error) {
+	query := `SELECT question_id, selected_choice_id FROM mock_exam_questions
+	          WHERE exam_id = $1 AND selected_choice_id IS NOT NULL`
+	rows, err := r.db.Pool.Query(ctx, query, examID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	answers := map[int64]string{}
+	for rows.Next() {
+		var questionID int64
+		var choice string
+		if err := rows.Scan(&questionID, &choice); err != nil {
+			return nil, err
+		}
+		answers[questionID] = choice
+	}
+	return answers, rows.Err()
+}
+
+func (r *MockExamRepository) SetExamAnswerCorrectness(ctx context.Context, examID int64, questionID int64, isCorrect bool) error {
+	query := `UPDATE mock_exam_questions SET is_correct = $1 WHERE exam_id = $2 AND question_id = $3`
+	_, err := r.db.Pool.Exec(ctx, query, isCorrect, examID, questionID)
+	return err
+}
+
 func (r *MockExamRepository) CompleteExam(ctx context.Context, examID int64, correctCount, scorePercent int, passed bool, completedAt time.Time) error {
 	query := `UPDATE mock_exams
 	          SET status = 'completed', correct_count = $1, score_percent = $2, passed = $3, completed_at = $4

@@ -161,9 +161,9 @@ func (u *PracticeUsecase) SubmitAnswer(ctx context.Context, userID int64, sessio
 	}
 
 	tr := targetQ.Translations[session.Locale]
-	xp := 0
+	xp := xpPerIncorrectAnswer
 	if isCorrect {
-		xp = 12
+		xp = xpPerCorrectAnswer
 	}
 
 	var nextRev *time.Time
@@ -185,11 +185,20 @@ func (u *PracticeUsecase) SubmitAnswer(ctx context.Context, userID int64, sessio
 }
 
 type CompletePracticeSessionResult struct {
-	SessionID  string `json:"sessionId"`
-	Status     string `json:"status"`
-	XP         int    `json:"xpAwarded"`
-	StreakDays int    `json:"streakDays"`
+	SessionID     string `json:"sessionId"`
+	Status        string `json:"status"`
+	XP            int    `json:"xpAwarded"`
+	StreakDays    int    `json:"streakDays"`
+	AnsweredCount int    `json:"answeredCount"`
+	CorrectCount  int    `json:"correctCount"`
 }
+
+// XP per answer. A wrong answer still pays, because the thing being rewarded
+// is showing up; it pays less, because the thing being measured is knowing.
+const (
+	xpPerCorrectAnswer   = 12
+	xpPerIncorrectAnswer = 2
+)
 
 func (u *PracticeUsecase) CompleteSession(ctx context.Context, userID int64, sessionPublicID string) (*CompletePracticeSessionResult, error) {
 	session, err := u.practiceRepo.GetSessionByPublicID(ctx, sessionPublicID)
@@ -197,27 +206,75 @@ func (u *PracticeUsecase) CompleteSession(ctx context.Context, userID int64, ses
 		return nil, errors.New("session not found")
 	}
 
+	if session.Status == domain.ExamStatusCompleted {
+		// Completing twice must not pay twice — the mobile client retries a
+		// failed completion, and the idempotency key only covers a repeat of
+		// the same request, not a second attempt with a fresh key.
+		return &CompletePracticeSessionResult{
+			SessionID:     sessionPublicID,
+			Status:        "completed",
+			AnsweredCount: session.AnsweredCount,
+			CorrectCount:  session.CorrectCount,
+		}, nil
+	}
+
+	// What the learner actually answered, not what they were handed: a
+	// session abandoned after three of ten questions scores three.
+	answered, correct, err := u.practiceRepo.GetSessionTally(ctx, session.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	stats, _ := u.dashRepo.GetUserStats(ctx, userID)
 	if stats == nil {
 		stats = &domain.UserStats{UserID: userID, Level: 1}
 	}
 
-	xpGain := session.TotalQuestions * 10
+	xpGain := correct*xpPerCorrectAnswer + (answered-correct)*xpPerIncorrectAnswer
 	stats.XP += xpGain
 	stats.Level = stats.XP/200 + 1
-	stats.TotalAnswered += session.TotalQuestions
-	stats.TotalCorrect += (session.TotalQuestions * 8) / 10 // approximate or exact
-	if stats.StreakDays == 0 {
-		stats.StreakDays = 1
+	stats.TotalAnswered += answered
+	stats.TotalCorrect += correct
+	if answered > 0 {
+		stats.StreakDays = nextStreak(stats.StreakDays, stats.LastActivityDate, time.Now().UTC())
 	}
 
 	_ = u.dashRepo.UpdateUserStats(ctx, stats)
-	_ = u.practiceRepo.CompleteSession(ctx, session.ID, session.TotalQuestions, session.TotalQuestions, time.Now().UTC())
+	_ = u.practiceRepo.CompleteSession(ctx, session.ID, answered, correct, time.Now().UTC())
 
 	return &CompletePracticeSessionResult{
-		SessionID:  sessionPublicID,
-		Status:     "completed",
-		XP:         xpGain,
-		StreakDays: stats.StreakDays,
+		SessionID:     sessionPublicID,
+		Status:        "completed",
+		XP:            xpGain,
+		StreakDays:    stats.StreakDays,
+		AnsweredCount: answered,
+		CorrectCount:  correct,
 	}, nil
+}
+
+// nextStreak advances the daily streak.
+//
+// Same day: unchanged, so two sessions in one evening are still one day.
+// Yesterday: one more. Anything older, or no record at all: the streak starts
+// again at one.
+func nextStreak(current int, lastActivity *string, now time.Time) int {
+	if lastActivity == nil || *lastActivity == "" {
+		return 1
+	}
+	last, err := time.Parse("2006-01-02", *lastActivity)
+	if err != nil {
+		return 1
+	}
+	today := now.UTC().Truncate(24 * time.Hour)
+	switch days := int(today.Sub(last.UTC()).Hours() / 24); {
+	case days <= 0:
+		if current < 1 {
+			return 1
+		}
+		return current
+	case days == 1:
+		return current + 1
+	default:
+		return 1
+	}
 }

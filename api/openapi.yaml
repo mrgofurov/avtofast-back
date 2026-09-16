@@ -10,6 +10,82 @@ servers:
     description: Local Development Server
 
 paths:
+  /auth/session:
+    post:
+      summary: Exchange a Firebase ID token for an AvtoFast session
+      description: >-
+        The mobile client signs in through Firebase (Google or Apple) and posts
+        the resulting ID token here. Every other authenticated endpoint takes
+        the access token this returns, not the Firebase one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+      responses:
+        '201':
+          description: Session established
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          description: The ID token is invalid or expired
+        '503':
+          description: Sign-in is unavailable or the token could not be verified
+  /auth/guest:
+    post:
+      summary: Start a session for a learner who declined sign-in
+      description: >-
+        Scoped to one installation. Progress is stored server-side exactly as
+        for a signed-in learner, but is tied to the device rather than to an
+        account, so it does not survive a reinstall.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceId:
+                  type: string
+                  description: Falls back to the X-Device-Id header when omitted.
+      responses:
+        '201':
+          description: Guest session established
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          description: No device id was supplied
+  /auth/refresh:
+    post:
+      summary: Renew an access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Session renewed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          description: The refresh token is invalid or expired
   /bootstrap:
     get:
       summary: App bootstrap configuration
@@ -31,6 +107,16 @@ paths:
       responses:
         '200':
           description: Profile updated
+    delete:
+      summary: Delete the account and all data belonging to it
+      description: >-
+        Permanent and immediate. Required by App Store Review Guideline
+        5.1.1(v). The session token stops working straight away.
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Account deleted
   /me/onboarding:
     put:
       summary: Save onboarding state
@@ -48,6 +134,13 @@ paths:
         '200':
           description: Preferences updated
   /me/notification-preferences:
+    get:
+      summary: Read notification preferences
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Notification preferences loaded
     patch:
       summary: Update notification preferences
       security:
@@ -242,6 +335,39 @@ paths:
           description: Device token registered
 
 components:
+  schemas:
+    Session:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: Bearer token for every authenticated endpoint.
+        refreshToken:
+          type: string
+          description: Presented to /auth/refresh only; never accepted as a bearer token.
+        tokenType:
+          type: string
+          example: Bearer
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds.
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              example: usr_01J9ZP4W2C0000000000000000
+            displayName:
+              type: string
+            email:
+              type: string
+            avatarUrl:
+              type: [string, "null"]
+            provider:
+              type: string
+              example: google.com
+            isGuest:
+              type: boolean
   securitySchemes:
     BearerAuth:
       type: http

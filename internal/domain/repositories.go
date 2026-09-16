@@ -10,6 +10,10 @@ type UserRepository interface {
 	GetByPublicID(ctx context.Context, publicID string) (*User, error)
 	GetOrCreateByProvider(ctx context.Context, provider, providerID, email, phone, displayName string) (*User, error)
 	Update(ctx context.Context, user *User) error
+	// Delete erases the account and everything hanging off it. Required by
+	// App Store Review Guideline 5.1.1(v): deletion has to be a real delete,
+	// reachable from inside the app, not a deactivation.
+	DeleteUser(ctx context.Context, userID int64) error
 	
 	GetOnboarding(ctx context.Context, userID int64) (*UserOnboarding, error)
 	SaveOnboarding(ctx context.Context, onboarding *UserOnboarding) error
@@ -54,12 +58,23 @@ type PracticeRepository interface {
 	GetSessionByPublicID(ctx context.Context, publicID string) (*PracticeSession, error)
 	SaveAnswer(ctx context.Context, sessionID int64, questionID int64, selectedChoiceID string, isCorrect bool, elapsedMs int, answeredAt time.Time) error
 	CompleteSession(ctx context.Context, sessionID int64, answeredCount, correctCount int, completedAt time.Time) error
+	// GetSessionTally counts what was actually answered in a session, so
+	// completion records the learner's real score instead of assuming every
+	// question was reached.
+	GetSessionTally(ctx context.Context, sessionID int64) (answered int, correct int, err error)
 }
 
 type MockExamRepository interface {
 	CreateExam(ctx context.Context, exam *MockExam) error
 	GetExamByPublicID(ctx context.Context, publicID string) (*MockExam, error)
 	SaveExamAnswer(ctx context.Context, examID int64, questionID int64, selectedChoiceID string, elapsedMs int) error
+	// GetExamAnswers returns what the learner actually selected, keyed by
+	// question id. Grading reads this: an exam is scored from the stored
+	// answers, never from the questions alone.
+	GetExamAnswers(ctx context.Context, examID int64) (map[int64]string, error)
+	// SetExamAnswerCorrectness records the grade of one answer, so a graded
+	// exam can be re-read later without regrading it.
+	SetExamAnswerCorrectness(ctx context.Context, examID int64, questionID int64, isCorrect bool) error
 	CompleteExam(ctx context.Context, examID int64, correctCount, scorePercent int, passed bool, completedAt time.Time) error
 	GetUserExams(ctx context.Context, userID int64, cursor string, limit int) ([]*MockExam, string, error)
 }
@@ -74,6 +89,10 @@ type DashboardRepository interface {
 	UpdateUserStats(ctx context.Context, stats *UserStats) error
 	GetCategoryAccuracy(ctx context.Context, userID int64) ([]WeakCategoryInfo, error)
 	GetAnalyticsProgress(ctx context.Context, userID int64, days int) (map[string]any, error)
+	// GetDailyActivity returns one entry per day over the window, oldest
+	// first, with days the learner did nothing included as zeroes so the
+	// chart has an unbroken axis.
+	GetDailyActivity(ctx context.Context, userID int64, days int) ([]DailyActivity, error)
 }
 
 type SyncRepository interface {

@@ -3,10 +3,16 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/avtofast/avtofast-back/internal/domain"
+	"github.com/avtofast/avtofast-back/pkg/id"
 	"github.com/avtofast/avtofast-back/pkg/jwt"
 )
+
+// ErrAccountDeleted is returned when a session token names an account that no
+// longer exists.
+var ErrAccountDeleted = errors.New("account no longer exists")
 
 type AuthUsecase struct {
 	userRepo domain.UserRepository
@@ -26,14 +32,11 @@ func (u *AuthUsecase) Authenticate(ctx context.Context, tokenStr string) (*domai
 		return nil, err
 	}
 
-	user, err := u.userRepo.GetOrCreateByProvider(
-		ctx,
-		claims.Provider,
-		claims.Subject,
-		claims.Email,
-		claims.Phone,
-		claims.Email, // default display name to email or sub
-	)
+	// Tokens minted by SessionUsecase carry our own public id as the subject,
+	// so the common path is a direct lookup. Anything else — a hand-signed
+	// test or admin token — still resolves through the provider identity it
+	// names, which is how those tokens worked before sessions existed.
+	user, err := u.resolveUser(ctx, claims)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +48,30 @@ func (u *AuthUsecase) Authenticate(ctx context.Context, tokenStr string) (*domai
 	}
 
 	return user, nil
+}
+
+func (u *AuthUsecase) resolveUser(ctx context.Context, claims *jwt.TokenClaims) (*domain.User, error) {
+	if strings.HasPrefix(claims.Subject, id.PrefixUser) {
+		user, err := u.userRepo.GetByPublicID(ctx, claims.Subject)
+		if err != nil {
+			return nil, err
+		}
+		if user == nil {
+			// The account this session belongs to is gone — deleted by its
+			// owner. Recreating it from the token's own claims would undo the
+			// deletion and hand the caller a fresh account under the same id.
+			return nil, ErrAccountDeleted
+		}
+		return user, nil
+	}
+	return u.userRepo.GetOrCreateByProvider(
+		ctx,
+		claims.Provider,
+		claims.Subject,
+		claims.Email,
+		claims.Phone,
+		claims.Email, // default display name to email or sub
+	)
 }
 
 type ProfileUsecase struct {
@@ -138,4 +165,20 @@ func (u *ProfileUsecase) GetNotificationPreferences(ctx context.Context, userID 
 func (u *ProfileUsecase) UpdateNotificationPreferences(ctx context.Context, userID int64, prefs *domain.NotificationPreferences) error {
 	prefs.UserID = userID
 	return u.userRepo.UpdateNotificationPreferences(ctx, prefs)
+}
+
+// DeleteAccount erases the account for good.
+//
+// It is a real delete, not a flag: App Store Review Guideline 5.1.1(v)
+// requires an app that lets somebody create an account to let them destroy it
+// from inside the app.
+func (u *ProfileUsecase) DeleteAccount(ctx context.Context, userID int64) error {
+	user, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+	return u.userRepo.DeleteUser(ctx, userID)
 }

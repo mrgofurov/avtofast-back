@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,27 +26,27 @@ type MemoryStore struct {
 	deviceSeq   int64
 	auditSeq    int64
 
-	Users               map[int64]*domain.User
-	UsersByPublicID     map[string]*domain.User
-	UsersByProvider     map[string]*domain.User // "provider:providerID"
-	Onboardings         map[int64]*domain.UserOnboarding
-	Preferences         map[int64]*domain.UserPreferences
-	NotificationPrefs   map[int64]*domain.NotificationPreferences
-	Devices             map[string]*domain.Device // publicID -> device
-	Entitlements        map[int64]*domain.Entitlement
-	Purchases           map[string]map[string]any // transactionID -> data
-	Packs               map[string]*domain.QuestionPack // packID -> pack
-	Questions           map[string]*domain.Question     // publicID -> question
-	PracticeSessions    map[string]*domain.PracticeSession // publicID -> session
-	PracticeQuestions   map[int64][]*domain.Question       // sessionID -> questions
-	PracticeAnswers     map[string]map[string]any          // "sessionID:qID" -> answer
-	MockExams           map[string]*domain.MockExam        // publicID -> exam
-	MockExamQuestions   map[int64][]*domain.Question       // examID -> questions
-	MockExamAnswers     map[string]map[string]any          // "examID:qID" -> answer
-	UserMistakes        map[string]*domain.UserMistakeItem // "userID:qID" -> mistake
-	UserStats           map[int64]*domain.UserStats
-	SyncEvents          map[string]*domain.SyncEventItem
-	AuditLogs           []*domain.AuditLog
+	Users             map[int64]*domain.User
+	UsersByPublicID   map[string]*domain.User
+	UsersByProvider   map[string]*domain.User // "provider:providerID"
+	Onboardings       map[int64]*domain.UserOnboarding
+	Preferences       map[int64]*domain.UserPreferences
+	NotificationPrefs map[int64]*domain.NotificationPreferences
+	Devices           map[string]*domain.Device // publicID -> device
+	Entitlements      map[int64]*domain.Entitlement
+	Purchases         map[string]map[string]any          // transactionID -> data
+	Packs             map[string]*domain.QuestionPack    // packID -> pack
+	Questions         map[string]*domain.Question        // publicID -> question
+	PracticeSessions  map[string]*domain.PracticeSession // publicID -> session
+	PracticeQuestions map[int64][]*domain.Question       // sessionID -> questions
+	PracticeAnswers   map[string]map[string]any          // "sessionID:qID" -> answer
+	MockExams         map[string]*domain.MockExam        // publicID -> exam
+	MockExamQuestions map[int64][]*domain.Question       // examID -> questions
+	MockExamAnswers   map[string]map[string]any          // "examID:qID" -> answer
+	UserMistakes      map[string]*domain.UserMistakeItem // "userID:qID" -> mistake
+	UserStats         map[int64]*domain.UserStats
+	SyncEvents        map[string]*domain.SyncEventItem
+	AuditLogs         []*domain.AuditLog
 
 	// Caching & Idempotency
 	Idempotency map[string][]byte
@@ -188,6 +189,62 @@ func (m *MemoryStore) Update(ctx context.Context, user *domain.User) error {
 	user.UpdatedAt = time.Now().UTC()
 	m.Users[user.ID] = user
 	m.UsersByPublicID[user.PublicID] = user
+	return nil
+}
+
+// DeleteUser mirrors the Postgres cascade by hand: every map keyed on the user,
+// directly or through one of their sessions, has to be swept here or the
+// in-memory backend would keep data the real one drops.
+func (m *MemoryStore) DeleteUser(ctx context.Context, userID int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	user, ok := m.Users[userID]
+	if !ok {
+		return nil
+	}
+	delete(m.Users, userID)
+	delete(m.UsersByPublicID, user.PublicID)
+	delete(m.UsersByProvider, user.Provider+":"+user.ProviderID)
+	delete(m.Onboardings, userID)
+	delete(m.Preferences, userID)
+	delete(m.NotificationPrefs, userID)
+	delete(m.Entitlements, userID)
+	delete(m.UserStats, userID)
+
+	for publicID, device := range m.Devices {
+		if device.UserID == userID {
+			delete(m.Devices, publicID)
+		}
+	}
+	for publicID, session := range m.PracticeSessions {
+		if session.UserID == userID {
+			delete(m.PracticeQuestions, session.ID)
+			for key := range m.PracticeAnswers {
+				if strings.HasPrefix(key, fmt.Sprintf("%d:", session.ID)) {
+					delete(m.PracticeAnswers, key)
+				}
+			}
+			delete(m.PracticeSessions, publicID)
+		}
+	}
+	for publicID, exam := range m.MockExams {
+		if exam.UserID == userID {
+			delete(m.MockExamQuestions, exam.ID)
+			for key := range m.MockExamAnswers {
+				if strings.HasPrefix(key, fmt.Sprintf("%d:", exam.ID)) {
+					delete(m.MockExamAnswers, key)
+				}
+			}
+			delete(m.MockExams, publicID)
+		}
+	}
+	prefix := fmt.Sprintf("%d:", userID)
+	for key := range m.UserMistakes {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.UserMistakes, key)
+		}
+	}
 	return nil
 }
 
@@ -472,6 +529,23 @@ func (m *MemoryStore) SaveAnswer(ctx context.Context, sessionID int64, questionI
 	return nil
 }
 
+func (m *MemoryStore) GetSessionTally(ctx context.Context, sessionID int64) (int, int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	prefix := fmt.Sprintf("%d:", sessionID)
+	answered, correct := 0, 0
+	for key, answer := range m.PracticeAnswers {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		answered++
+		if isCorrect, _ := answer["isCorrect"].(bool); isCorrect {
+			correct++
+		}
+	}
+	return answered, correct, nil
+}
+
 func (m *MemoryStore) CompleteSession(ctx context.Context, sessionID int64, answeredCount, correctCount int, completedAt time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -516,6 +590,35 @@ func (m *MemoryStore) SaveExamAnswer(ctx context.Context, examID int64, question
 	m.MockExamAnswers[key] = map[string]any{
 		"choice":    selectedChoiceID,
 		"elapsedMs": elapsedMs,
+	}
+	return nil
+}
+
+func (m *MemoryStore) GetExamAnswers(ctx context.Context, examID int64) (map[int64]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	answers := map[int64]string{}
+	for key, answer := range m.MockExamAnswers {
+		var keyExamID, questionID int64
+		if _, err := fmt.Sscanf(key, "%d:%d", &keyExamID, &questionID); err != nil {
+			continue
+		}
+		if keyExamID != examID {
+			continue
+		}
+		if choice, ok := answer["choice"].(string); ok {
+			answers[questionID] = choice
+		}
+	}
+	return answers, nil
+}
+
+func (m *MemoryStore) SetExamAnswerCorrectness(ctx context.Context, examID int64, questionID int64, isCorrect bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := fmt.Sprintf("%d:%d", examID, questionID)
+	if answer, ok := m.MockExamAnswers[key]; ok {
+		answer["isCorrect"] = isCorrect
 	}
 	return nil
 }
@@ -626,16 +729,75 @@ func (m *MemoryStore) GetCategoryAccuracy(ctx context.Context, userID int64) ([]
 	}, nil
 }
 
+// GetDailyActivity attributes every answer in the store to the day it was
+// answered, then pads the window so the series has one entry per day like the
+// Postgres implementation does.
+func (m *MemoryStore) GetDailyActivity(ctx context.Context, userID int64, days int) ([]domain.DailyActivity, error) {
+	if days <= 0 {
+		days = 30
+	}
+
+	m.mu.RLock()
+	sessionIDs := make(map[int64]bool)
+	for _, session := range m.PracticeSessions {
+		if session.UserID == userID {
+			sessionIDs[session.ID] = true
+		}
+	}
+	type tally struct{ answered, correct int }
+	byDay := map[string]tally{}
+	for key, answer := range m.PracticeAnswers {
+		var sessionID, questionID int64
+		if _, err := fmt.Sscanf(key, "%d:%d", &sessionID, &questionID); err != nil {
+			continue
+		}
+		if !sessionIDs[sessionID] {
+			continue
+		}
+		answeredAt, ok := answer["answeredAt"].(time.Time)
+		if !ok {
+			continue
+		}
+		day := answeredAt.UTC().Format("2006-01-02")
+		entry := byDay[day]
+		entry.answered++
+		if isCorrect, _ := answer["isCorrect"].(bool); isCorrect {
+			entry.correct++
+		}
+		byDay[day] = entry
+	}
+	m.mu.RUnlock()
+
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	list := make([]domain.DailyActivity, 0, days)
+	for offset := days - 1; offset >= 0; offset-- {
+		day := today.AddDate(0, 0, -offset).Format("2006-01-02")
+		entry := byDay[day]
+		list = append(list, domain.DailyActivity{
+			Date:     day,
+			Answered: entry.answered,
+			Correct:  entry.correct,
+		})
+	}
+	return list, nil
+}
+
 func (m *MemoryStore) GetAnalyticsProgress(ctx context.Context, userID int64, days int) (map[string]any, error) {
 	stats, _ := m.GetUserStats(ctx, userID)
+	daily, _ := m.GetDailyActivity(ctx, userID, days)
+	overall := 0
+	if stats.TotalAnswered > 0 {
+		overall = (stats.TotalCorrect * 100) / stats.TotalAnswered
+	}
 	return map[string]any{
-		"rangeDays":            days,
-		"overallAccuracy":      75,
+		"rangeDays":              days,
+		"overallAccuracy":        overall,
 		"totalQuestionsAnswered": stats.TotalAnswered,
-		"completedMockExams":   stats.CompletedMockExams,
-		"passedMockExams":      stats.PassedMockExams,
-		"categories":           []any{},
-		"streak":               stats.StreakDays,
+		"completedMockExams":     stats.CompletedMockExams,
+		"passedMockExams":        stats.PassedMockExams,
+		"categories":             []any{},
+		"streak":                 stats.StreakDays,
+		"dailyActivity":          daily,
 	}, nil
 }
 

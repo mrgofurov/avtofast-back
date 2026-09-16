@@ -17,6 +17,7 @@ import (
 	"github.com/avtofast/avtofast-back/internal/repository/postgres"
 	redisrepo "github.com/avtofast/avtofast-back/internal/repository/redis"
 	"github.com/avtofast/avtofast-back/internal/usecase"
+	"github.com/avtofast/avtofast-back/pkg/firebase"
 	"github.com/avtofast/avtofast-back/pkg/jwt"
 	"github.com/avtofast/avtofast-back/pkg/logger"
 	"github.com/goccy/go-json"
@@ -147,8 +148,23 @@ func main() {
 		ExpectedAudience: cfg.JWT.Audience,
 	})
 
+	// 3b. Session issuance: Firebase ID tokens in, AvtoFast session tokens out
+	firebaseVerifier := firebase.NewVerifier(cfg.Firebase.ProjectID)
+	if !firebaseVerifier.Enabled() {
+		log.Info("FIREBASE_PROJECT_ID is not set; sign-in exchange is disabled")
+	}
+	tokenIssuer := jwt.NewIssuer(cfg.JWT.SecretKey, cfg.JWT.Issuer, cfg.JWT.Audience)
+
 	// 4. Use Cases
 	authUsecase := usecase.NewAuthUsecase(userRepo, jwtVerifier)
+	sessionUsecase := usecase.NewSessionUsecase(
+		userRepo,
+		firebaseVerifier,
+		tokenIssuer,
+		jwtVerifier,
+		cfg.JWT.AccessTTL,
+		cfg.JWT.RefreshTTL,
+	)
 	profileUsecase := usecase.NewProfileUsecase(userRepo, entRepo)
 	contentUsecase := usecase.NewContentUsecase(contentRepo, entRepo, cfg)
 	practiceUsecase := usecase.NewPracticeUsecase(practiceRepo, contentRepo, mistakeRepo, dashRepo, entRepo)
@@ -160,6 +176,7 @@ func main() {
 
 	// 5. HTTP Handlers
 	handlers := &router.Handlers{
+		Session:   handler.NewSessionHandler(sessionUsecase),
 		Bootstrap: handler.NewBootstrapHandler(contentUsecase),
 		Profile:   handler.NewProfileHandler(profileUsecase),
 		Content:   handler.NewContentHandler(contentUsecase),

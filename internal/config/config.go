@@ -43,7 +43,19 @@ type Config struct {
 		SecretKey string `yaml:"secret_key"`
 		Issuer    string `yaml:"issuer"`
 		Audience  string `yaml:"audience"`
+		// AccessTTL is short enough that a revoked or role-changed session
+		// stops working within the day; RefreshTTL is what keeps a learner
+		// signed in on a phone they only open twice a week.
+		AccessTTL  time.Duration `yaml:"access_ttl"`
+		RefreshTTL time.Duration `yaml:"refresh_ttl"`
 	} `yaml:"jwt"`
+
+	Firebase struct {
+		// ProjectID enables verification of the Firebase ID tokens the mobile
+		// app gets from Google/Apple sign-in. Empty disables the exchange
+		// endpoint rather than accepting unverified tokens.
+		ProjectID string `yaml:"project_id"`
+	} `yaml:"firebase"`
 
 	Signing struct {
 		Ed25519PrivateKeyBase64 string `yaml:"ed25519_private_key"`
@@ -98,6 +110,9 @@ func Load(path string) (*Config, error) {
 	cfg.JWT.SecretKey = "avtofast-super-secure-dev-secret-key-32b"
 	cfg.JWT.Issuer = "https://api.avtofast.uz/auth"
 	cfg.JWT.Audience = "avtofast-api"
+	cfg.JWT.AccessTTL = 24 * time.Hour
+	cfg.JWT.RefreshTTL = 90 * 24 * time.Hour
+	cfg.Firebase.ProjectID = "avtofast-8fba6"
 
 	cfg.Rules.ExamQuestionCount = 20
 	cfg.Rules.ExamDurationSec = 1200
@@ -189,6 +204,21 @@ func Load(path string) (*Config, error) {
 	}
 	if jwtAud := os.Getenv("JWT_AUDIENCE"); jwtAud != "" {
 		cfg.JWT.Audience = jwtAud
+	}
+	if ttl := os.Getenv("JWT_ACCESS_TTL"); ttl != "" {
+		if val, err := time.ParseDuration(ttl); err == nil {
+			cfg.JWT.AccessTTL = val
+		}
+	}
+	if ttl := os.Getenv("JWT_REFRESH_TTL"); ttl != "" {
+		if val, err := time.ParseDuration(ttl); err == nil {
+			cfg.JWT.RefreshTTL = val
+		}
+	}
+
+	// Firebase envs
+	if projectID := os.Getenv("FIREBASE_PROJECT_ID"); projectID != "" {
+		cfg.Firebase.ProjectID = projectID
 	}
 
 	// Signing keys envs

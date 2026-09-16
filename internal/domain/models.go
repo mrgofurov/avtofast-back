@@ -42,17 +42,17 @@ const (
 )
 
 type User struct {
-	ID          int64      `json:"-"`
-	PublicID    string     `json:"id"`
-	ProviderID  string     `json:"-"`
-	Provider    string     `json:"-"`
-	Email       string     `json:"email,omitempty"`
-	Phone       string     `json:"phone,omitempty"`
-	DisplayName string     `json:"displayName"`
-	AvatarURL   *string    `json:"avatarUrl"`
-	Role        string     `json:"role"`
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
+	ID          int64     `json:"-"`
+	PublicID    string    `json:"id"`
+	ProviderID  string    `json:"-"`
+	Provider    string    `json:"-"`
+	Email       string    `json:"email,omitempty"`
+	Phone       string    `json:"phone,omitempty"`
+	DisplayName string    `json:"displayName"`
+	AvatarURL   *string   `json:"avatarUrl"`
+	Role        string    `json:"role"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type UserOnboarding struct {
@@ -133,21 +133,21 @@ type QuestionTranslationData struct {
 }
 
 type Question struct {
-	ID              int64                               `json:"-"`
-	PublicID        string                              `json:"id"`
-	PackTableID     int64                               `json:"-"`
-	PackID          string                              `json:"packId"`
-	ContentVersion  string                              `json:"contentVersion"`
-	Category        string                              `json:"category"`
-	Difficulty      string                              `json:"difficulty"`
-	Image           *QuestionImage                      `json:"image,omitempty"`
-	VideoURL        string                              `json:"videoUrl,omitempty"`
-	AudioURL        string                              `json:"audioUrl,omitempty"`
-	ExternalID      int64                               `json:"externalId,omitempty"`
-	Source          *QuestionSource                     `json:"source,omitempty"`
-	CorrectChoiceID string                              `json:"-"` // never exposed in online question payload
+	ID              int64                              `json:"-"`
+	PublicID        string                             `json:"id"`
+	PackTableID     int64                              `json:"-"`
+	PackID          string                             `json:"packId"`
+	ContentVersion  string                             `json:"contentVersion"`
+	Category        string                             `json:"category"`
+	Difficulty      string                             `json:"difficulty"`
+	Image           *QuestionImage                     `json:"image,omitempty"`
+	VideoURL        string                             `json:"videoUrl,omitempty"`
+	AudioURL        string                             `json:"audioUrl,omitempty"`
+	ExternalID      int64                              `json:"externalId,omitempty"`
+	Source          *QuestionSource                    `json:"source,omitempty"`
+	CorrectChoiceID string                             `json:"-"` // never exposed in online question payload
 	Translations    map[string]QuestionTranslationData `json:"translations,omitempty"`
-	Status          string                              `json:"status"`
+	Status          string                             `json:"status"`
 }
 
 // ClientQuestionPayload strips out correct answers and returns targeted translation
@@ -291,17 +291,17 @@ type UserMistakeItem struct {
 }
 
 type UserStats struct {
-	ID                 int64      `json:"-"`
-	UserID             int64      `json:"-"`
-	XP                 int        `json:"xp"`
-	Level              int        `json:"level"`
-	StreakDays         int        `json:"streakDays"`
-	LastActivityDate   *string    `json:"lastActivityDate,omitempty"`
-	TotalAnswered      int        `json:"totalAnswered"`
-	TotalCorrect       int        `json:"totalCorrect"`
-	CompletedMockExams int        `json:"completedMockExams"`
-	PassedMockExams    int        `json:"passedMockExams"`
-	UpdatedAt          time.Time  `json:"-"`
+	ID                 int64     `json:"-"`
+	UserID             int64     `json:"-"`
+	XP                 int       `json:"xp"`
+	Level              int       `json:"level"`
+	StreakDays         int       `json:"streakDays"`
+	LastActivityDate   *string   `json:"lastActivityDate,omitempty"`
+	TotalAnswered      int       `json:"totalAnswered"`
+	TotalCorrect       int       `json:"totalCorrect"`
+	CompletedMockExams int       `json:"completedMockExams"`
+	PassedMockExams    int       `json:"passedMockExams"`
+	UpdatedAt          time.Time `json:"-"`
 }
 
 type WeakCategoryInfo struct {
@@ -311,13 +311,16 @@ type WeakCategoryInfo struct {
 }
 
 type DashboardSnapshot struct {
-	XP                    int                `json:"xp"`
-	Level                 int                `json:"level"`
-	StreakDays            int                `json:"streakDays"`
-	DailyGoal             DailyGoalStatus    `json:"dailyGoal"`
-	ReadinessScore        int                `json:"readinessScore"`
-	AccuracyPercent       int                `json:"accuracyPercent"`
-	CompletedMockExams    int                `json:"completedMockExams"`
+	XP                 int             `json:"xp"`
+	Level              int             `json:"level"`
+	StreakDays         int             `json:"streakDays"`
+	DailyGoal          DailyGoalStatus `json:"dailyGoal"`
+	ReadinessScore     int             `json:"readinessScore"`
+	AccuracyPercent    int             `json:"accuracyPercent"`
+	CompletedMockExams int             `json:"completedMockExams"`
+	// DueMistakeCount is what the home screen's mistakes tile counts, so the
+	// number there and the number on the review screen come from one place.
+	DueMistakeCount       int                `json:"dueMistakeCount"`
 	WeakCategories        []WeakCategoryInfo `json:"weakCategories"`
 	NextRecommendedAction string             `json:"nextRecommendedAction"`
 }
@@ -327,13 +330,21 @@ type DailyGoalStatus struct {
 	Target    int `json:"target"`
 }
 
+// DailyActivity is one day of answering, for the progress chart and for
+// deciding how much of today's goal is already done.
+type DailyActivity struct {
+	Date     string `json:"date"`
+	Answered int    `json:"answered"`
+	Correct  int    `json:"correct"`
+}
+
 type SyncEventItem struct {
-	ID         string          `json:"id"`
-	Type       string          `json:"type"`
-	OccurredAt time.Time       `json:"occurredAt"`
-	PackID     string          `json:"packId"`
-	PackVersion string         `json:"packVersion"`
-	Payload    json.RawMessage `json:"payload"`
+	ID          string          `json:"id"`
+	Type        string          `json:"type"`
+	OccurredAt  time.Time       `json:"occurredAt"`
+	PackID      string          `json:"packId"`
+	PackVersion string          `json:"packVersion"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 type SyncResultEventStatus struct {
@@ -356,15 +367,15 @@ type SyncChangesResponse struct {
 }
 
 type AuditLog struct {
-	ID         int64     `json:"-"`
-	PublicID   string    `json:"id"`
-	ActorID    int64     `json:"-"`
-	ActorName  string    `json:"actor"`
-	Action     string    `json:"action"`
-	TargetType string    `json:"targetType"`
-	TargetID   string    `json:"targetId"`
-	BeforeState any      `json:"beforeState,omitempty"`
-	AfterState  any      `json:"afterState,omitempty"`
-	Reason     string    `json:"reason"`
-	CreatedAt  time.Time `json:"createdAt"`
+	ID          int64     `json:"-"`
+	PublicID    string    `json:"id"`
+	ActorID     int64     `json:"-"`
+	ActorName   string    `json:"actor"`
+	Action      string    `json:"action"`
+	TargetType  string    `json:"targetType"`
+	TargetID    string    `json:"targetId"`
+	BeforeState any       `json:"beforeState,omitempty"`
+	AfterState  any       `json:"afterState,omitempty"`
+	Reason      string    `json:"reason"`
+	CreatedAt   time.Time `json:"createdAt"`
 }

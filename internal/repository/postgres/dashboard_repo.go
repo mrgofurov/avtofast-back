@@ -109,6 +109,46 @@ func (r *DashboardRepository) GetCategoryAccuracy(ctx context.Context, userID in
 	return list, nil
 }
 
+func (r *DashboardRepository) GetDailyActivity(ctx context.Context, userID int64, days int) ([]domain.DailyActivity, error) {
+	if days <= 0 {
+		days = 30
+	}
+	// generate_series supplies the empty days: a chart with gaps where the
+	// learner rested would compress the axis and misreport the trend.
+	query := `WITH days AS (
+	              SELECT generate_series(CURRENT_DATE - ($2::int - 1), CURRENT_DATE, '1 day')::date AS day
+	          )
+	          SELECT days.day,
+	                 COUNT(psq.id) FILTER (WHERE psq.is_correct IS NOT NULL) AS answered,
+	                 COUNT(psq.id) FILTER (WHERE psq.is_correct) AS correct
+	          FROM days
+	          LEFT JOIN practice_sessions ps ON ps.user_id = $1
+	          LEFT JOIN practice_session_questions psq
+	                 ON psq.session_id = ps.id AND psq.answered_at::date = days.day
+	          GROUP BY days.day
+	          ORDER BY days.day ASC`
+	rows, err := r.db.Pool.Query(ctx, query, userID, days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	list := make([]domain.DailyActivity, 0, days)
+	for rows.Next() {
+		var day time.Time
+		var answered, correct int
+		if err := rows.Scan(&day, &answered, &correct); err != nil {
+			return nil, err
+		}
+		list = append(list, domain.DailyActivity{
+			Date:     day.Format("2006-01-02"),
+			Answered: answered,
+			Correct:  correct,
+		})
+	}
+	return list, rows.Err()
+}
+
 func (r *DashboardRepository) GetAnalyticsProgress(ctx context.Context, userID int64, days int) (map[string]any, error) {
 	if days <= 0 {
 		days = 30
@@ -123,13 +163,24 @@ func (r *DashboardRepository) GetAnalyticsProgress(ctx context.Context, userID i
 		return nil, err
 	}
 
+	daily, err := r.GetDailyActivity(ctx, userID, days)
+	if err != nil {
+		return nil, err
+	}
+
+	overall := 0
+	if stats.TotalAnswered > 0 {
+		overall = (stats.TotalCorrect * 100) / stats.TotalAnswered
+	}
+
 	return map[string]any{
-		"rangeDays":            days,
-		"overallAccuracy":      func() int { if stats.TotalAnswered == 0 { return 0 }; return (stats.TotalCorrect * 100) / stats.TotalAnswered }(),
+		"rangeDays":              days,
+		"overallAccuracy":        overall,
 		"totalQuestionsAnswered": stats.TotalAnswered,
-		"completedMockExams":   stats.CompletedMockExams,
-		"passedMockExams":      stats.PassedMockExams,
-		"categories":           catAcc,
-		"streak":               stats.StreakDays,
+		"completedMockExams":     stats.CompletedMockExams,
+		"passedMockExams":        stats.PassedMockExams,
+		"categories":             catAcc,
+		"streak":                 stats.StreakDays,
+		"dailyActivity":          daily,
 	}, nil
 }

@@ -106,6 +106,15 @@ func (r *UserRepository) Update(ctx context.Context, user *domain.User) error {
 	return err
 }
 
+// DeleteUser removes the user row. Every user-scoped table declares
+// `REFERENCES users(id) ON DELETE CASCADE`, so onboarding, preferences,
+// devices, sessions, exams, mistakes, stats and purchases go with it in the
+// same statement.
+func (r *UserRepository) DeleteUser(ctx context.Context, userID int64) error {
+	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID)
+	return err
+}
+
 func (r *UserRepository) GetOnboarding(ctx context.Context, userID int64) (*domain.UserOnboarding, error) {
 	query := `SELECT id, user_id, acquisition_source, knowledge_level, locale, target_exam_date, daily_question_goal, completed
 	          FROM user_onboardings WHERE user_id = $1`

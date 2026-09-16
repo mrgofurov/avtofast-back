@@ -15,6 +15,7 @@ import (
 )
 
 type Handlers struct {
+	Session   *handler.SessionHandler
 	Bootstrap *handler.BootstrapHandler
 	Profile   *handler.ProfileHandler
 	Content   *handler.ContentHandler
@@ -86,12 +87,21 @@ func SetupRoutes(cfg RouterConfig) {
 	idemp := middleware.Idempotency(cfg.IdempStore)
 	rateLimiter := middleware.RateLimit(cfg.RateStore, 120, time.Minute)
 
+	// Session issuance — the only unauthenticated mutating endpoints, and the
+	// door to every other one, so they get a tighter limit of their own.
+	auth := v1.Group("/auth", middleware.RateLimit(cfg.RateStore, 30, time.Minute))
+	auth.Post("/session", h.Session.PostSession)
+	auth.Post("/guest", h.Session.PostGuestSession)
+	auth.Post("/refresh", h.Session.PostRefresh)
+
 	// User profile & onboarding
 	me := v1.Group("/me", userAuth)
 	me.Get("", h.Profile.GetMe)
 	me.Patch("", idemp, h.Profile.PatchMe)
+	me.Delete("", h.Profile.DeleteMe)
 	me.Put("/onboarding", idemp, h.Profile.PutOnboarding)
 	me.Patch("/preferences", idemp, h.Profile.PatchPreferences)
+	me.Get("/notification-preferences", h.Profile.GetNotificationPreferences)
 	me.Patch("/notification-preferences", idemp, h.Profile.PatchNotificationPreferences)
 
 	// Content packs & questions

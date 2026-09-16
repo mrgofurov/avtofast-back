@@ -111,6 +111,17 @@ func (r *PracticeRepository) SaveAnswer(ctx context.Context, sessionID int64, qu
 	return err
 }
 
+func (r *PracticeRepository) GetSessionTally(ctx context.Context, sessionID int64) (int, int, error) {
+	query := `SELECT COUNT(*) FILTER (WHERE is_correct IS NOT NULL),
+	                 COUNT(*) FILTER (WHERE is_correct)
+	          FROM practice_session_questions WHERE session_id = $1`
+	var answered, correct int
+	if err := r.db.Pool.QueryRow(ctx, query, sessionID).Scan(&answered, &correct); err != nil {
+		return 0, 0, err
+	}
+	return answered, correct, nil
+}
+
 func (r *PracticeRepository) CompleteSession(ctx context.Context, sessionID int64, answeredCount, correctCount int, completedAt time.Time) error {
 	query := `UPDATE practice_sessions
 	          SET status = 'completed', answered_count = $1, correct_count = $2, completed_at = $3

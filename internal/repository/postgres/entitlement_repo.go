@@ -30,9 +30,9 @@ func (r *EntitlementRepository) GetByUserID(ctx context.Context, userID int64) (
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return &domain.Entitlement{
-				UserID:   userID,
-				Tier:     domain.TierFree,
-				Status:   "active",
+				UserID: userID,
+				Tier:   domain.TierFree,
+				Status: "active",
 				Features: map[string]bool{
 					"aiMistakeAnalysis": false,
 					"advancedAnalytics": false,
