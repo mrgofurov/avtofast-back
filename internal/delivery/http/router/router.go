@@ -20,6 +20,7 @@ type Handlers struct {
 	Profile   *handler.ProfileHandler
 	Content   *handler.ContentHandler
 	Practice  *handler.PracticeHandler
+	Topic     *handler.TopicHandler
 	MockExam  *handler.MockExamHandler
 	Review    *handler.ReviewHandler
 	Dashboard *handler.DashboardHandler
@@ -110,6 +111,11 @@ func SetupRoutes(cfg RouterConfig) {
 	content.Get("/packs/:packId/manifest", h.Content.GetPackManifest)
 	content.Get("/packs/:packId/questions", h.Content.GetQuestions)
 	content.Post("/packs/:packId/offline-download", rateLimiter, h.Content.PostOfflineDownload)
+
+	// Topics: the syllabus cut into numbered tests, and progress through them
+	topics := v1.Group("/topics", userAuth)
+	topics.Get("", h.Topic.GetTopics)
+	topics.Get("/:category/tests", h.Topic.GetTopicTests)
 
 	// Practice Sessions
 	practice := v1.Group("/practice-sessions", userAuth)

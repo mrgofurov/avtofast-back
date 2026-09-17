@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/avtofast/avtofast-back/internal/domain"
@@ -385,6 +386,68 @@ func (r *ContentRepository) GetRandomQuestions(ctx context.Context, packID strin
 	}
 
 	return r.GetQuestionsByIDs(ctx, pubIDs)
+}
+
+// CountQuestionsByCategory is one grouped scan rather than a count per
+// category: the topics list needs all seven, and seven round trips to build one
+// screen is seven too many.
+func (r *ContentRepository) CountQuestionsByCategory(ctx context.Context, packID string) (map[string]int, error) {
+	const query = `SELECT category, COUNT(*) FROM questions
+	               WHERE pack_id = $1 AND status = 'published'
+	               GROUP BY category`
+	rows, err := r.db.Pool.Query(ctx, query, packID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int, len(domain.Categories))
+	for rows.Next() {
+		var category string
+		var count int
+		if err := rows.Scan(&category, &count); err != nil {
+			return nil, err
+		}
+		counts[category] = count
+	}
+	return counts, rows.Err()
+}
+
+// GetQuestionSlice returns one numbered test's questions: a fixed window of a
+// category ordered by `questions.id`, the insertion sequence, which never
+// changes. Anything else — RANDOM(), or an order derived from content that an
+// edit could alter — would renumber the tests under the learner.
+func (r *ContentRepository) GetQuestionSlice(ctx context.Context, packID, category string, offset, limit int) ([]*domain.Question, error) {
+	const query = `SELECT public_id FROM questions
+	               WHERE pack_id = $1 AND category = $2 AND status = 'published'
+	               ORDER BY id OFFSET $3 LIMIT $4`
+	rows, err := r.db.Pool.Query(ctx, query, packID, category, offset, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pubIDs []string
+	for rows.Next() {
+		var pubID string
+		if err := rows.Scan(&pubID); err != nil {
+			return nil, err
+		}
+		pubIDs = append(pubIDs, pubID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	questions, err := r.GetQuestionsByIDs(ctx, pubIDs)
+	if err != nil {
+		return nil, err
+	}
+	// GetQuestionsByIDs fetches with `= ANY(...)`, whose row order Postgres
+	// does not promise. Restore the slice's own order so a test presents its
+	// questions the same way on every attempt.
+	sort.Slice(questions, func(i, j int) bool { return questions[i].ID < questions[j].ID })
+	return questions, nil
 }
 
 func (r *ContentRepository) CreatePack(ctx context.Context, pack *domain.QuestionPack) error {

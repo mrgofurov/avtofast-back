@@ -462,6 +462,45 @@ func (m *MemoryStore) GetRandomQuestions(ctx context.Context, packID string, cou
 	return pool[:count], nil
 }
 
+// stableOrder sorts by the insertion sequence, which is what makes a numbered
+// test the same questions every time. The Postgres store orders by the same
+// key — questions.id — so both stores slice a category identically.
+func stableOrder(questions []*domain.Question) {
+	sort.Slice(questions, func(i, j int) bool { return questions[i].ID < questions[j].ID })
+}
+
+func (m *MemoryStore) CountQuestionsByCategory(ctx context.Context, packID string) (map[string]int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	counts := make(map[string]int, len(domain.Categories))
+	for _, q := range m.Questions {
+		if q.PackID == packID && q.Status == "published" {
+			counts[q.Category]++
+		}
+	}
+	return counts, nil
+}
+
+func (m *MemoryStore) GetQuestionSlice(ctx context.Context, packID, category string, offset, limit int) ([]*domain.Question, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var pool []*domain.Question
+	for _, q := range m.Questions {
+		if q.PackID == packID && q.Status == "published" && q.Category == category {
+			pool = append(pool, q)
+		}
+	}
+	stableOrder(pool)
+	if offset >= len(pool) {
+		return nil, nil
+	}
+	end := offset + limit
+	if end > len(pool) {
+		end = len(pool)
+	}
+	return pool[offset:end], nil
+}
+
 func (m *MemoryStore) CreatePack(ctx context.Context, pack *domain.QuestionPack) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -527,6 +566,57 @@ func (m *MemoryStore) SaveAnswer(ctx context.Context, sessionID int64, questionI
 		"answeredAt": answeredAt,
 	}
 	return nil
+}
+
+func (m *MemoryStore) GetTopicTestResults(ctx context.Context, userID int64, packID, category string) (map[int]domain.TopicTest, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	results := make(map[int]domain.TopicTest)
+	for _, session := range m.PracticeSessions {
+		if session.UserID != userID || session.PackID != packID ||
+			session.TestIndex == nil || session.Status != domain.ExamStatusCompleted ||
+			session.Category == nil || *session.Category != category {
+			continue
+		}
+		index := *session.TestIndex
+		entry := results[index]
+		entry.Index = index
+		entry.Attempts++
+		if entry.BestCorrect == nil || session.CorrectCount > *entry.BestCorrect {
+			correct := session.CorrectCount
+			entry.BestCorrect = &correct
+			entry.QuestionCount = session.TotalQuestions
+		}
+		if entry.LastAttemptAt == nil || (session.CompletedAt != nil && session.CompletedAt.After(*entry.LastAttemptAt)) {
+			entry.LastAttemptAt = session.CompletedAt
+		}
+		results[index] = entry
+	}
+	return results, nil
+}
+
+func (m *MemoryStore) CountCompletedTestsByCategory(ctx context.Context, userID int64, packID string) (map[string]int, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	// Distinct test indexes per category: three attempts at Test 1 are one
+	// test covered, not three.
+	seen := make(map[string]map[int]struct{})
+	for _, session := range m.PracticeSessions {
+		if session.UserID != userID || session.PackID != packID ||
+			session.TestIndex == nil || session.Status != domain.ExamStatusCompleted ||
+			session.Category == nil {
+			continue
+		}
+		if seen[*session.Category] == nil {
+			seen[*session.Category] = make(map[int]struct{})
+		}
+		seen[*session.Category][*session.TestIndex] = struct{}{}
+	}
+	counts := make(map[string]int, len(seen))
+	for category, indexes := range seen {
+		counts[category] = len(indexes)
+	}
+	return counts, nil
 }
 
 func (m *MemoryStore) GetSessionTally(ctx context.Context, sessionID int64) (int, int, error) {

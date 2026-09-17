@@ -25,12 +25,12 @@ func (r *PracticeRepository) CreateSession(ctx context.Context, session *domain.
 	}
 	defer tx.Rollback(ctx)
 
-	querySession := `INSERT INTO practice_sessions (public_id, user_id, mode, pack_id, pack_version, locale, category, status, total_questions, created_at)
-	                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	querySession := `INSERT INTO practice_sessions (public_id, user_id, mode, pack_id, pack_version, locale, category, test_index, status, total_questions, created_at)
+	                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 	                 RETURNING id`
 	err = tx.QueryRow(ctx, querySession,
 		session.PublicID, session.UserID, session.Mode, session.PackID, session.PackVersion,
-		session.Locale, session.Category, session.Status, session.TotalQuestions, session.CreatedAt,
+		session.Locale, session.Category, session.TestIndex, session.Status, session.TotalQuestions, session.CreatedAt,
 	).Scan(&session.ID)
 	if err != nil {
 		return err
@@ -49,13 +49,13 @@ func (r *PracticeRepository) CreateSession(ctx context.Context, session *domain.
 }
 
 func (r *PracticeRepository) GetSessionByPublicID(ctx context.Context, publicID string) (*domain.PracticeSession, error) {
-	query := `SELECT id, public_id, user_id, mode, pack_id, pack_version, locale, category, status,
+	query := `SELECT id, public_id, user_id, mode, pack_id, pack_version, locale, category, test_index, status,
 	                 total_questions, answered_count, correct_count, created_at, completed_at
 	          FROM practice_sessions WHERE public_id = $1`
 	var s domain.PracticeSession
 	err := r.db.Pool.QueryRow(ctx, query, publicID).Scan(
 		&s.ID, &s.PublicID, &s.UserID, &s.Mode, &s.PackID, &s.PackVersion, &s.Locale,
-		&s.Category, &s.Status, &s.TotalQuestions, &s.AnsweredCount, &s.CorrectCount,
+		&s.Category, &s.TestIndex, &s.Status, &s.TotalQuestions, &s.AnsweredCount, &s.CorrectCount,
 		&s.CreatedAt, &s.CompletedAt,
 	)
 	if err != nil {
@@ -109,6 +109,61 @@ func (r *PracticeRepository) SaveAnswer(ctx context.Context, sessionID int64, qu
 	          WHERE session_id = $5 AND question_id = $6`
 	_, err := r.db.Pool.Exec(ctx, query, selectedChoiceID, isCorrect, elapsedMs, answeredAt, sessionID, questionID)
 	return err
+}
+
+// GetTopicTestResults collapses every completed attempt at every numbered test
+// in one category into one row per test. Aggregating in SQL rather than reading
+// the sessions back keeps the topic screen a single round trip however many
+// times the learner has retried.
+func (r *PracticeRepository) GetTopicTestResults(ctx context.Context, userID int64, packID, category string) (map[int]domain.TopicTest, error) {
+	const query = `SELECT test_index, COUNT(*), MAX(correct_count), MAX(total_questions), MAX(completed_at)
+	               FROM practice_sessions
+	               WHERE user_id = $1 AND pack_id = $2 AND category = $3
+	                 AND test_index IS NOT NULL AND status = 'completed'
+	               GROUP BY test_index`
+	rows, err := r.db.Pool.Query(ctx, query, userID, packID, category)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := make(map[int]domain.TopicTest)
+	for rows.Next() {
+		var test domain.TopicTest
+		var completedAt *time.Time
+		if err := rows.Scan(&test.Index, &test.Attempts, &test.BestCorrect, &test.QuestionCount, &completedAt); err != nil {
+			return nil, err
+		}
+		test.LastAttemptAt = completedAt
+		results[test.Index] = test
+	}
+	return results, rows.Err()
+}
+
+// CountCompletedTestsByCategory counts distinct tests, not attempts: three goes
+// at Test 1 is one test covered.
+func (r *PracticeRepository) CountCompletedTestsByCategory(ctx context.Context, userID int64, packID string) (map[string]int, error) {
+	const query = `SELECT category, COUNT(DISTINCT test_index)
+	               FROM practice_sessions
+	               WHERE user_id = $1 AND pack_id = $2
+	                 AND test_index IS NOT NULL AND status = 'completed' AND category IS NOT NULL
+	               GROUP BY category`
+	rows, err := r.db.Pool.Query(ctx, query, userID, packID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var category string
+		var count int
+		if err := rows.Scan(&category, &count); err != nil {
+			return nil, err
+		}
+		counts[category] = count
+	}
+	return counts, rows.Err()
 }
 
 func (r *PracticeRepository) GetSessionTally(ctx context.Context, sessionID int64) (int, int, error) {

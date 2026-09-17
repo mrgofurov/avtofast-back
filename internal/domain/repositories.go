@@ -45,6 +45,14 @@ type ContentRepository interface {
 	GetQuestionByID(ctx context.Context, questionPublicID string) (*Question, error)
 	GetQuestionsByIDs(ctx context.Context, questionPublicIDs []string) ([]*Question, error)
 	GetRandomQuestions(ctx context.Context, packID string, count int, category string) ([]*Question, error)
+	// CountQuestionsByCategory returns how many published questions each
+	// category of a pack holds, which is what decides how many numbered tests
+	// that topic has.
+	CountQuestionsByCategory(ctx context.Context, packID string) (map[string]int, error)
+	// GetQuestionSlice returns a fixed window of one category's published
+	// questions in their stable insertion order — the same questions every
+	// time it is asked, which is what makes a numbered test a numbered test.
+	GetQuestionSlice(ctx context.Context, packID, category string, offset, limit int) ([]*Question, error)
 
 	// Admin operations
 	CreatePack(ctx context.Context, pack *QuestionPack) error
@@ -62,6 +70,13 @@ type PracticeRepository interface {
 	// completion records the learner's real score instead of assuming every
 	// question was reached.
 	GetSessionTally(ctx context.Context, sessionID int64) (answered int, correct int, err error)
+	// GetTopicTestResults returns the learner's best score and attempt count
+	// for each numbered test they have completed in one category, keyed by
+	// test index.
+	GetTopicTestResults(ctx context.Context, userID int64, packID, category string) (map[int]TopicTest, error)
+	// CountCompletedTestsByCategory returns how many distinct numbered tests
+	// the learner has completed in each category of a pack.
+	CountCompletedTestsByCategory(ctx context.Context, userID int64, packID string) (map[string]int, error)
 }
 
 type MockExamRepository interface {

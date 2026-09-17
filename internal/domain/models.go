@@ -40,7 +40,36 @@ const (
 	PracticeModeCategory      = "category"
 	PracticeModeMistakeReview = "mistake_review"
 	PracticeModeDailyGoal     = "daily_goal"
+
+	// QuestionsPerTest is how many questions one numbered topic test holds.
+	// It matches the official exam's length, so a test is a rehearsal of the
+	// real thing rather than an arbitrary batch. Changing it renumbers every
+	// test in every topic, which is why it is a constant and not a parameter.
+	QuestionsPerTest = 20
 )
+
+// Categories is the syllabus, in the order the app lists it.
+var Categories = []string{
+	CategoryRoadSigns,
+	CategoryTrafficRules,
+	CategoryIntersections,
+	CategoryFirstAid,
+	CategoryPenalties,
+	CategoryVehicleSafety,
+	CategorySituations,
+}
+
+// IsKnownCategory reports whether a category name is one of the seven. Used to
+// turn an unrecognised path parameter into a 400 rather than an empty list
+// that looks like a topic with no questions in it.
+func IsKnownCategory(category string) bool {
+	for _, known := range Categories {
+		if known == category {
+			return true
+		}
+	}
+	return false
+}
 
 type User struct {
 	ID          int64     `json:"-"`
@@ -237,14 +266,18 @@ type QuestionPack struct {
 }
 
 type PracticeSession struct {
-	ID             int64       `json:"-"`
-	PublicID       string      `json:"id"`
-	UserID         int64       `json:"-"`
-	Mode           string      `json:"mode"`
-	PackID         string      `json:"packId"`
-	PackVersion    string      `json:"packVersion"`
-	Locale         string      `json:"locale"`
-	Category       *string     `json:"category,omitempty"`
+	ID          int64   `json:"-"`
+	PublicID    string  `json:"id"`
+	UserID      int64   `json:"-"`
+	Mode        string  `json:"mode"`
+	PackID      string  `json:"packId"`
+	PackVersion string  `json:"packVersion"`
+	Locale      string  `json:"locale"`
+	Category    *string `json:"category,omitempty"`
+	// TestIndex is the 1-based numbered test this session was, for a category
+	// session that asked for one. Nil for every other mode, and for the
+	// free-form category practice that predates numbered tests.
+	TestIndex      *int        `json:"testIndex,omitempty"`
 	Status         string      `json:"status"`
 	TotalQuestions int         `json:"totalQuestions"`
 	AnsweredCount  int         `json:"answeredCount"`
@@ -337,6 +370,34 @@ type UserStats struct {
 	CompletedMockExams int       `json:"completedMockExams"`
 	PassedMockExams    int       `json:"passedMockExams"`
 	UpdatedAt          time.Time `json:"-"`
+}
+
+// TopicSummary is one row of the topics list: how much of a category exists,
+// how it is cut into numbered tests, and how far the learner has got through
+// them.
+type TopicSummary struct {
+	Category      string `json:"category"`
+	QuestionCount int    `json:"questionCount"`
+	TestCount     int    `json:"testCount"`
+	// CompletedTests counts tests attempted through to completion at least
+	// once — the honest measure of coverage, unlike accuracy, which says
+	// nothing about how much of the topic has been seen.
+	CompletedTests  int `json:"completedTests"`
+	AccuracyPercent int `json:"accuracyPercent"`
+	DueMistakes     int `json:"dueMistakes"`
+}
+
+// TopicTest is one numbered test and what the learner has scored on it.
+//
+// BestCorrect is the best attempt rather than the last: a test the learner
+// once got 18/20 on has been learned, and showing a worse retry in its place
+// would punish practising.
+type TopicTest struct {
+	Index         int        `json:"index"`
+	QuestionCount int        `json:"questionCount"`
+	Attempts      int        `json:"attempts"`
+	BestCorrect   *int       `json:"bestCorrect,omitempty"`
+	LastAttemptAt *time.Time `json:"lastAttemptAt,omitempty"`
 }
 
 type WeakCategoryInfo struct {

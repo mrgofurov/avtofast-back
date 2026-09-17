@@ -34,17 +34,22 @@ func NewPracticeUsecase(
 }
 
 type CreatePracticeSessionRequest struct {
-	Mode          string  `json:"mode"`
-	PackID        string  `json:"packId"`
-	Locale        string  `json:"locale"`
-	Category      *string `json:"category"`
-	QuestionCount int     `json:"questionCount"`
+	Mode     string  `json:"mode"`
+	PackID   string  `json:"packId"`
+	Locale   string  `json:"locale"`
+	Category *string `json:"category"`
+	// TestIndex asks for one numbered test of a category: a fixed slice of the
+	// bank rather than a random draw, so Test 7 is the same twenty questions on
+	// every attempt and on every device. 1-based. Ignored without a category.
+	TestIndex     *int `json:"testIndex"`
+	QuestionCount int  `json:"questionCount"`
 }
 
 type PracticeSessionResponse struct {
 	ID          string                         `json:"id"`
 	Mode        string                         `json:"mode"`
 	PackVersion string                         `json:"packVersion"`
+	TestIndex   *int                           `json:"testIndex,omitempty"`
 	Questions   []domain.ClientQuestionPayload `json:"questions"`
 }
 
@@ -65,6 +70,30 @@ func (u *PracticeUsecase) CreateSession(ctx context.Context, userID int64, req C
 	var cat string
 	if req.Category != nil {
 		cat = *req.Category
+	}
+
+	// A numbered test is answered entirely from the slice: no mistake-review
+	// fill, no random top-up. Either the learner gets exactly that test or the
+	// request fails, because a "Test 7" that quietly contained something else
+	// would make its score meaningless.
+	if testIndex := req.TestIndex; testIndex != nil {
+		if cat == "" {
+			return nil, errors.New("testIndex requires a category")
+		}
+		if *testIndex < 1 {
+			return nil, errors.New("testIndex is 1-based")
+		}
+		slice, err := u.contentRepo.GetQuestionSlice(
+			ctx, req.PackID, cat,
+			(*testIndex-1)*domain.QuestionsPerTest, domain.QuestionsPerTest,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if len(slice) == 0 {
+			return nil, errors.New("no such test in this category")
+		}
+		return u.persistSession(ctx, userID, req, pack, slice, testIndex)
 	}
 
 	if req.Mode == domain.PracticeModeMistakeReview {
@@ -91,6 +120,17 @@ func (u *PracticeUsecase) CreateSession(ctx context.Context, userID int64, req C
 		return nil, errors.New("no questions available for the selected criteria")
 	}
 
+	return u.persistSession(ctx, userID, req, pack, questions, nil)
+}
+
+func (u *PracticeUsecase) persistSession(
+	ctx context.Context,
+	userID int64,
+	req CreatePracticeSessionRequest,
+	pack *domain.QuestionPack,
+	questions []*domain.Question,
+	testIndex *int,
+) (*PracticeSessionResponse, error) {
 	session := &domain.PracticeSession{
 		PublicID:       id.New(id.PrefixPractice),
 		UserID:         userID,
@@ -99,6 +139,7 @@ func (u *PracticeUsecase) CreateSession(ctx context.Context, userID int64, req C
 		PackVersion:    pack.Version,
 		Locale:         req.Locale,
 		Category:       req.Category,
+		TestIndex:      testIndex,
 		Status:         domain.ExamStatusInProgress,
 		TotalQuestions: len(questions),
 		CreatedAt:      time.Now().UTC(),
@@ -109,7 +150,7 @@ func (u *PracticeUsecase) CreateSession(ctx context.Context, userID int64, req C
 		return nil, err
 	}
 
-	var clientQuestions []domain.ClientQuestionPayload
+	clientQuestions := make([]domain.ClientQuestionPayload, 0, len(questions))
 	for _, q := range questions {
 		clientQuestions = append(clientQuestions, q.ToClientPayload(req.Locale))
 	}
@@ -118,6 +159,7 @@ func (u *PracticeUsecase) CreateSession(ctx context.Context, userID int64, req C
 		ID:          session.PublicID,
 		Mode:        session.Mode,
 		PackVersion: session.PackVersion,
+		TestIndex:   testIndex,
 		Questions:   clientQuestions,
 	}, nil
 }

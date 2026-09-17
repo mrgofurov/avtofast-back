@@ -199,9 +199,53 @@ paths:
         '200':
           description: Signed download package URL
 
+  /topics:
+    get:
+      summary: Syllabus categories, their numbered tests and progress through them
+      description: >-
+        Each category's published questions are cut into fixed slices of
+        twenty — questions 1-20 are Test 1, 21-40 are Test 2, and so on over
+        the whole bank. A learner who finishes every test in a topic has seen
+        every question in it.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: packId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One entry per category with questionCount, testCount and completedTests
+  /topics/{category}/tests:
+    get:
+      summary: One topic's numbered tests, with the learner's best score on each
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [road_signs, traffic_rules, intersections, first_aid, penalties, vehicle_safety, situations]
+        - name: packId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tests in order, each with questionCount, attempts and bestCorrect
+
   /practice-sessions:
     post:
       summary: Create adaptive/category/mistake practice session
+      description: >-
+        With `testIndex` and a `category`, returns exactly that numbered test:
+        a fixed, repeatable slice, with no mistake-review or random fill.
+        Without it, behaviour is unchanged — a random draw of `questionCount`.
       security:
         - BearerAuth: []
       responses:

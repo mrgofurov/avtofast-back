@@ -168,6 +168,7 @@ func main() {
 	profileUsecase := usecase.NewProfileUsecase(userRepo, entRepo)
 	contentUsecase := usecase.NewContentUsecase(contentRepo, entRepo, cfg)
 	practiceUsecase := usecase.NewPracticeUsecase(practiceRepo, contentRepo, mistakeRepo, dashRepo, entRepo)
+	topicUsecase := usecase.NewTopicUsecase(contentRepo, practiceRepo, dashRepo)
 	mockExamUsecase := usecase.NewMockExamUsecase(mockExamRepo, contentRepo, dashRepo, mistakeRepo, cfg)
 	dashUsecase := usecase.NewDashboardUsecase(dashRepo, mistakeRepo, userRepo)
 	syncUsecase := usecase.NewSyncUsecase(syncRepo, contentRepo, mistakeRepo, dashRepo)
@@ -181,6 +182,7 @@ func main() {
 		Profile:   handler.NewProfileHandler(profileUsecase),
 		Content:   handler.NewContentHandler(contentUsecase),
 		Practice:  handler.NewPracticeHandler(practiceUsecase),
+		Topic:     handler.NewTopicHandler(topicUsecase),
 		MockExam:  handler.NewMockExamHandler(mockExamUsecase),
 		Review:    handler.NewReviewHandler(dashUsecase),
 		Dashboard: handler.NewDashboardHandler(dashUsecase),
