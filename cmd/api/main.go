@@ -190,6 +190,7 @@ func main() {
 		Billing:   handler.NewBillingHandler(billingUsecase),
 		Social:    handler.NewSocialHandler(cfg),
 		Admin:     handler.NewAdminHandler(adminUsecase),
+		Auth:      handler.NewAuthHandler(userRepo, cfg.JWT.SecretKey),
 	}
 
 	// 6. Fiber Configuration tuned for 50k RPC

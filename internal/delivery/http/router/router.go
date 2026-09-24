@@ -28,6 +28,7 @@ type Handlers struct {
 	Billing   *handler.BillingHandler
 	Social    *handler.SocialHandler
 	Admin     *handler.AdminHandler
+	Auth      *handler.AuthHandler
 }
 
 type RouterConfig struct {
@@ -79,6 +80,13 @@ func SetupRoutes(cfg RouterConfig) {
 
 	// V1 API Group
 	v1 := app.Group("/v1")
+
+	// Authentication (Telegram WebApp & Guest)
+	if h.Auth != nil {
+		auth := v1.Group("/auth")
+		auth.Post("/telegram", h.Auth.PostTelegramAuth)
+		auth.Post("/guest", h.Auth.PostGuestAuth)
+	}
 
 	// P0 Bootstrap (optional auth)
 	v1.Get("/bootstrap", middleware.OptionalAuthenticate(cfg.AuthUsecase), h.Bootstrap.GetBootstrap)
