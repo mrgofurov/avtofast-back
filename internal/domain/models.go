@@ -180,7 +180,7 @@ type Question struct {
 	Status          string                             `json:"status"`
 }
 
-// ClientQuestionPayload strips out correct answers and returns targeted translation
+// ClientQuestionPayload returns targeted translation with media, choices and explanation
 type ClientQuestionPayload struct {
 	ID             string          `json:"id"`
 	PackId         string          `json:"packId"`
@@ -193,6 +193,8 @@ type ClientQuestionPayload struct {
 	Source         *QuestionSource `json:"source,omitempty"`
 	Prompt         string          `json:"prompt"`
 	Choices        []ChoiceItem    `json:"choices"`
+	CorrectChoiceID string         `json:"correctChoiceId,omitempty"`
+	Explanation    string          `json:"explanation,omitempty"`
 }
 
 // MediaMountPath is where question media is served from. Media is stored with
@@ -247,6 +249,8 @@ func (q *Question) ToClientPayload(locale string) ClientQuestionPayload {
 		Source:         q.Source,
 		Prompt:         tr.Prompt,
 		Choices:        tr.Choices,
+		CorrectChoiceID: q.CorrectChoiceID,
+		Explanation:    tr.Explanation,
 	}
 }
 
