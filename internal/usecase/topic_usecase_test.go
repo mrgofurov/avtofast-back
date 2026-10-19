@@ -17,6 +17,9 @@ const topicPackID = "uz-theory-topics"
 
 // seedTopicBank builds a pack big enough to be cut into several tests, which is
 // the only size at which slicing means anything.
+// topicSigns is the topic the tests fill with questions.
+const topicSigns = "signs_prohibitory"
+
 func seedTopicBank(t *testing.T, roadSigns, firstAid int) *memory.MemoryStore {
 	t.Helper()
 	ctx := context.Background()
@@ -56,8 +59,8 @@ func seedTopicBank(t *testing.T, roadSigns, firstAid int) *memory.MemoryStore {
 			}))
 		}
 	}
-	add(domain.CategoryRoadSigns, roadSigns)
-	add(domain.CategoryFirstAid, firstAid)
+	add(topicSigns, roadSigns)
+	add(domain.TopicFirstAid, firstAid)
 	return mem
 }
 
@@ -70,20 +73,25 @@ func TestTopicsCutTheWholeBankIntoNumberedTests(t *testing.T) {
 	res, err := topics.Topics(context.Background(), 1, topicPackID)
 	require.NoError(t, err)
 	assert.Equal(t, domain.QuestionsPerTest, res.QuestionsPerTest)
-	// Every category of the syllabus is listed, including the five with no
-	// questions in this pack.
-	require.Len(t, res.Items, len(domain.Categories))
+	// Every topic of the syllabus is listed, including the many with no
+	// questions in this pack, each with its name and group.
+	require.Len(t, res.Items, len(domain.Topics))
+	require.Len(t, res.Groups, len(domain.TopicGroups))
 
 	byCategory := map[string]domain.TopicSummary{}
 	for _, item := range res.Items {
 		byCategory[item.Category] = item
 	}
-	assert.Equal(t, 47, byCategory[domain.CategoryRoadSigns].QuestionCount)
-	assert.Equal(t, 3, byCategory[domain.CategoryRoadSigns].TestCount)
-	assert.Equal(t, 1, byCategory[domain.CategoryFirstAid].TestCount)
-	assert.Equal(t, 0, byCategory[domain.CategorySituations].TestCount)
+	assert.Equal(t, 47, byCategory[topicSigns].QuestionCount)
+	assert.Equal(t, 3, byCategory[topicSigns].TestCount)
+	assert.Equal(t, 1, byCategory[domain.TopicFirstAid].TestCount)
+	assert.Equal(t, 0, byCategory["overtaking"].TestCount)
+	assert.Equal(t, "Taqiqlovchi belgilar", byCategory[topicSigns].Title)
+	assert.Equal(t, domain.TopicGroupSigns, byCategory[topicSigns].Group)
+	assert.Equal(t, "Yoʻl belgilari", byCategory[topicSigns].GroupTitle)
+	assert.Equal(t, "YHQ 1-ilova, 3-boʻlim", byCategory[topicSigns].Source)
 
-	tests, err := topics.TopicTests(context.Background(), 1, topicPackID, domain.CategoryRoadSigns)
+	tests, err := topics.TopicTests(context.Background(), 1, topicPackID, topicSigns)
 	require.NoError(t, err)
 	require.Len(t, tests.Items, 3)
 	assert.Equal(t, 20, tests.Items[0].QuestionCount)
@@ -103,7 +111,7 @@ func TestNumberedTestsAreTheSameQuestionsEveryTime(t *testing.T) {
 	mem := seedTopicBank(t, 47, 0)
 	practice := usecase.NewPracticeUsecase(mem, mem, mem, mem, mem)
 	ctx := context.Background()
-	category := domain.CategoryRoadSigns
+	category := topicSigns
 
 	ask := func(index int) []string {
 		testIndex := index
@@ -128,9 +136,9 @@ func TestNumberedTestsAreTheSameQuestionsEveryTime(t *testing.T) {
 
 	// Neighbouring tests do not overlap, and between them they cover the bank
 	// in order.
-	assert.Equal(t, "road_signs-0001", ask(1)[0])
-	assert.Equal(t, "road_signs-0021", first[0])
-	assert.Equal(t, "road_signs-0041", ask(3)[0])
+	assert.Equal(t, "signs_prohibitory-0001", ask(1)[0])
+	assert.Equal(t, "signs_prohibitory-0021", first[0])
+	assert.Equal(t, "signs_prohibitory-0041", ask(3)[0])
 	assert.Len(t, ask(3), 7)
 
 	// A test past the end of the category is an error, not an empty session
@@ -151,7 +159,7 @@ func TestTopicTestsReportTheLearnersBestAttempt(t *testing.T) {
 	practice := usecase.NewPracticeUsecase(mem, mem, mem, mem, mem)
 	topics := usecase.NewTopicUsecase(mem, mem, mem)
 	ctx := context.Background()
-	category := domain.CategoryRoadSigns
+	category := topicSigns
 	const userID int64 = 7
 
 	// Sit Test 1 twice, answering better the first time than the second.

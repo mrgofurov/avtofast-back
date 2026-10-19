@@ -13,6 +13,7 @@ import (
 	"github.com/avtofast/avtofast-back/internal/delivery/http/handler"
 	"github.com/avtofast/avtofast-back/internal/delivery/http/router"
 	"github.com/avtofast/avtofast-back/internal/domain"
+	"github.com/avtofast/avtofast-back/internal/repository/claude"
 	"github.com/avtofast/avtofast-back/internal/repository/memory"
 	"github.com/avtofast/avtofast-back/internal/repository/postgres"
 	redisrepo "github.com/avtofast/avtofast-back/internal/repository/redis"
@@ -48,6 +49,14 @@ func main() {
 	var entRepo domain.EntitlementRepository
 	var deviceRepo domain.DeviceRepository
 	var auditRepo domain.AuditRepository
+	// Official texts for the AI tutor (Rules, traffic law, traffic fines);
+	// only stored in Postgres, filled by cmd/lex-import. Without them the
+	// tutor answers from the question bank alone.
+	var legalRepo domain.LegalRepository
+	// Exam tickets; Postgres only, filled by cmd/import-tickets.
+	var ticketRepo domain.TicketRepository
+	// Road sign reference; Postgres only, filled by cmd/import-signs.
+	var roadSignRepo domain.RoadSignRepository
 
 	db, err := postgres.NewPool(ctx, cfg)
 	if err == nil {
@@ -66,6 +75,9 @@ func main() {
 			entRepo = postgres.NewEntitlementRepository(db)
 			deviceRepo = postgres.NewDeviceRepository(db)
 			auditRepo = postgres.NewAuditRepository(db)
+			legalRepo = postgres.NewLegalRepository(db)
+			ticketRepo = postgres.NewTicketRepository(db, contentRepo.(*postgres.ContentRepository))
+			roadSignRepo = postgres.NewRoadSignRepository(db, contentRepo.(*postgres.ContentRepository))
 			syncRepo = postgres.NewSyncRepository(
 				db,
 				userRepo.(*postgres.UserRepository),
@@ -168,12 +180,26 @@ func main() {
 	profileUsecase := usecase.NewProfileUsecase(userRepo, entRepo)
 	contentUsecase := usecase.NewContentUsecase(contentRepo, entRepo, cfg)
 	practiceUsecase := usecase.NewPracticeUsecase(practiceRepo, contentRepo, mistakeRepo, dashRepo, entRepo)
+	practiceUsecase.SetTicketRepository(ticketRepo)
+	practiceUsecase.SetRoadSignRepository(roadSignRepo)
 	topicUsecase := usecase.NewTopicUsecase(contentRepo, practiceRepo, dashRepo)
 	mockExamUsecase := usecase.NewMockExamUsecase(mockExamRepo, contentRepo, dashRepo, mistakeRepo, cfg)
 	dashUsecase := usecase.NewDashboardUsecase(dashRepo, mistakeRepo, userRepo)
 	syncUsecase := usecase.NewSyncUsecase(syncRepo, contentRepo, mistakeRepo, dashRepo)
 	billingUsecase := usecase.NewBillingUsecase(entRepo, deviceRepo)
 	adminUsecase := usecase.NewAdminUsecase(contentRepo, auditRepo, cfg)
+
+	// AI tutor: without a key the endpoint answers 503 rather than guessing.
+	var tutorModel domain.TutorModel
+	if cfg.Features.AITutor {
+		if cfg.AI.AnthropicAPIKey != "" {
+			tutorModel = claude.NewTutorModel(cfg.AI.AnthropicAPIKey, cfg.AI.TutorModel)
+			log.Info("AI tutor enabled", map[string]any{"model": cfg.AI.TutorModel})
+		} else {
+			log.Info("FEATURE_AI_TUTOR is on but ANTHROPIC_API_KEY is not set; the tutor will answer 503")
+		}
+	}
+	tutorUsecase := usecase.NewTutorUsecase(contentRepo, legalRepo, tutorModel)
 
 	// 5. HTTP Handlers
 	handlers := &router.Handlers{
@@ -183,6 +209,8 @@ func main() {
 		Content:   handler.NewContentHandler(contentUsecase),
 		Practice:  handler.NewPracticeHandler(practiceUsecase),
 		Topic:     handler.NewTopicHandler(topicUsecase),
+		Ticket:    handler.NewTicketHandler(ticketRepo),
+		RoadSign:  handler.NewRoadSignHandler(roadSignRepo),
 		MockExam:  handler.NewMockExamHandler(mockExamUsecase),
 		Review:    handler.NewReviewHandler(dashUsecase),
 		Dashboard: handler.NewDashboardHandler(dashUsecase),
@@ -191,6 +219,7 @@ func main() {
 		Social:    handler.NewSocialHandler(cfg),
 		Admin:     handler.NewAdminHandler(adminUsecase),
 		Auth:      handler.NewAuthHandler(userRepo, cfg.JWT.SecretKey),
+		Tutor:     handler.NewTutorHandler(cfg, tutorUsecase, log),
 	}
 
 	// 6. Fiber Configuration tuned for 50k RPC

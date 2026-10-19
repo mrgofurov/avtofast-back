@@ -31,6 +31,7 @@ func NewTopicUsecase(
 type TopicsResponse struct {
 	PackID           string                `json:"packId"`
 	QuestionsPerTest int                   `json:"questionsPerTest"`
+	Groups           []domain.TopicGroup   `json:"groups"`
 	Items            []domain.TopicSummary `json:"items"`
 }
 
@@ -76,10 +77,15 @@ func (u *TopicUsecase) Topics(ctx context.Context, userID int64, packID string) 
 	// Driven by domain.Categories, not by what the pack happens to contain, so
 	// a topic with no questions yet still appears — empty and honest rather
 	// than silently missing.
-	items := make([]domain.TopicSummary, 0, len(domain.Categories))
-	for _, category := range domain.Categories {
+	items := make([]domain.TopicSummary, 0, len(domain.Topics))
+	for _, topic := range domain.Topics {
+		category := topic.Key
 		summary := domain.TopicSummary{
 			Category:        category,
+			Title:           topic.Title,
+			Group:           topic.Group,
+			GroupTitle:      domain.TopicGroupTitle(topic.Group),
+			Source:          topic.Source,
 			QuestionCount:   counts[category],
 			TestCount:       testCount(counts[category]),
 			CompletedTests:  completed[category],
@@ -97,6 +103,7 @@ func (u *TopicUsecase) Topics(ctx context.Context, userID int64, packID string) 
 	return &TopicsResponse{
 		PackID:           packID,
 		QuestionsPerTest: domain.QuestionsPerTest,
+		Groups:           domain.TopicGroups,
 		Items:            items,
 	}, nil
 }

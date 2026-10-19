@@ -13,6 +13,10 @@ const (
 	LocaleRu     = "ru"
 	LocaleEn     = "en"
 
+	// Coarse categories the scraper guesses from keywords when it imports a
+	// question. They are only a starting point: cmd/classify-topics files
+	// every question under a topic (see Topics) by the clause its official
+	// explanation cites, and the topic key replaces these.
 	CategoryRoadSigns     = "road_signs"
 	CategoryTrafficRules  = "traffic_rules"
 	CategoryIntersections = "intersections"
@@ -47,29 +51,6 @@ const (
 	// test in every topic, which is why it is a constant and not a parameter.
 	QuestionsPerTest = 20
 )
-
-// Categories is the syllabus, in the order the app lists it.
-var Categories = []string{
-	CategoryRoadSigns,
-	CategoryTrafficRules,
-	CategoryIntersections,
-	CategoryFirstAid,
-	CategoryPenalties,
-	CategoryVehicleSafety,
-	CategorySituations,
-}
-
-// IsKnownCategory reports whether a category name is one of the seven. Used to
-// turn an unrecognised path parameter into a 400 rather than an empty list
-// that looks like a topic with no questions in it.
-func IsKnownCategory(category string) bool {
-	for _, known := range Categories {
-		if known == category {
-			return true
-		}
-	}
-	return false
-}
 
 type User struct {
 	ID          int64     `json:"-"`
@@ -281,7 +262,9 @@ type PracticeSession struct {
 	// TestIndex is the 1-based numbered test this session was, for a category
 	// session that asked for one. Nil for every other mode, and for the
 	// free-form category practice that predates numbered tests.
-	TestIndex      *int        `json:"testIndex,omitempty"`
+	TestIndex *int `json:"testIndex,omitempty"`
+	// TicketNumber is the exam ticket this session was; nil otherwise.
+	TicketNumber   *int        `json:"ticketNumber,omitempty"`
 	Status         string      `json:"status"`
 	TotalQuestions int         `json:"totalQuestions"`
 	AnsweredCount  int         `json:"answeredCount"`
@@ -381,6 +364,12 @@ type UserStats struct {
 // them.
 type TopicSummary struct {
 	Category      string `json:"category"`
+	// Title, group and source come from the syllabus (Topics), so a client
+	// can list topics without its own copy of their names.
+	Title         string `json:"title"`
+	Group         string `json:"group"`
+	GroupTitle    string `json:"groupTitle"`
+	Source        string `json:"source,omitempty"`
 	QuestionCount int    `json:"questionCount"`
 	TestCount     int    `json:"testCount"`
 	// CompletedTests counts tests attempted through to completion at least

@@ -201,9 +201,14 @@ paths:
 
   /topics:
     get:
-      summary: Syllabus categories, their numbered tests and progress through them
+      summary: Syllabus topics, their numbered tests and progress through them
       description: >-
-        Each category's published questions are cut into fixed slices of
+        Topics follow the Yo'l harakati qoidalari (one per chapter or appendix
+        section, plus first aid and safe driving), listed in syllabus order
+        under eight groups; each item carries its title, group, groupTitle and
+        the YHQ source it covers. Questions are filed under topics by
+        cmd/classify-topics from the clause their official explanation cites.
+        Each topic's published questions are cut into fixed slices of
         twenty — questions 1-20 are Test 1, 21-40 are Test 2, and so on over
         the whole bank. A learner who finishes every test in a topic has seen
         every question in it.
@@ -227,9 +232,12 @@ paths:
         - name: category
           in: path
           required: true
+          description: >-
+            A topic key from GET /topics (e.g. intersections_equal,
+            signs_prohibitory, towing). Topics follow the Yo'l harakati
+            qoidalari: one per chapter or appendix section.
           schema:
             type: string
-            enum: [road_signs, traffic_rules, intersections, first_aid, penalties, vehicle_safety, situations]
         - name: packId
           in: query
           required: true
@@ -377,6 +385,78 @@ paths:
       responses:
         '200':
           description: Device token registered
+
+  /ai/tutor:
+    post:
+      summary: Ask the AI tutor (AI Ustoz)
+      description: |
+        Answers only from the question bank's official explanations, which cite
+        YHQ clauses. When those sources do not cover the question the answer is
+        a fixed "not in my sources" text with `grounded: false` and no
+        citations. Behind FEATURE_AI_TUTOR; limited to 20 requests a minute.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  maxLength: 1000
+                questionId:
+                  type: string
+                  description: A question the learner just got wrong; its explanation is always a source.
+                selectedChoiceId:
+                  type: string
+                  description: The choice the learner picked for questionId.
+                history:
+                  type: array
+                  description: Earlier turns of the chat, oldest first; only the last 10 are used.
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum: [user, assistant]
+                      text:
+                        type: string
+      responses:
+        '200':
+          description: Tutor answer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  answer:
+                    type: string
+                  grounded:
+                    type: boolean
+                  citations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        questionId:
+                          type: string
+                        clause:
+                          type: string
+                          description: The YHQ reference as the explanation writes it; absent when it cites none.
+                        text:
+                          type: string
+                          description: The official explanation, verbatim.
+        '400':
+          description: Missing message
+        '403':
+          description: FEATURE_DISABLED
+        '502':
+          description: AI_FAILED, the model call failed
+        '503':
+          description: AI_UNAVAILABLE, no API key configured
 
 components:
   schemas:

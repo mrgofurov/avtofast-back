@@ -21,6 +21,8 @@ type Handlers struct {
 	Content   *handler.ContentHandler
 	Practice  *handler.PracticeHandler
 	Topic     *handler.TopicHandler
+	Ticket    *handler.TicketHandler
+	RoadSign  *handler.RoadSignHandler
 	MockExam  *handler.MockExamHandler
 	Review    *handler.ReviewHandler
 	Dashboard *handler.DashboardHandler
@@ -29,6 +31,7 @@ type Handlers struct {
 	Social    *handler.SocialHandler
 	Admin     *handler.AdminHandler
 	Auth      *handler.AuthHandler
+	Tutor     *handler.TutorHandler
 }
 
 type RouterConfig struct {
@@ -125,6 +128,12 @@ func SetupRoutes(cfg RouterConfig) {
 	topics.Get("", h.Topic.GetTopics)
 	topics.Get("/:category/tests", h.Topic.GetTopicTests)
 
+	// Tickets: the numbered exam sets, with the learner's best score on each
+	v1.Get("/tickets", userAuth, h.Ticket.GetTickets)
+
+	// Road signs: the appendix 1 reference with official wording
+	v1.Get("/road-signs", userAuth, h.RoadSign.GetRoadSigns)
+
 	// Practice Sessions
 	practice := v1.Group("/practice-sessions", userAuth)
 	practice.Post("", idemp, h.Practice.CreateSession)
@@ -177,6 +186,11 @@ func SetupRoutes(cfg RouterConfig) {
 	ai := v1.Group("/ai", userAuth, rateLimiter)
 	ai.Post("/mistake-analyses", h.Social.PostAIMistakeAnalysis)
 	ai.Get("/mistake-analyses/:analysisId", h.Social.GetAIMistakeAnalysis)
+	// Each answer is a paid model call, so the tutor gets its own, tighter
+	// per-learner limit on top of the group's.
+	if h.Tutor != nil {
+		ai.Post("/tutor", middleware.RateLimit(cfg.RateStore, 20, time.Minute), h.Tutor.PostTutor)
+	}
 
 	// Admin API (Separate audience / roles)
 	adminGroup := v1.Group("/admin", userAuth)

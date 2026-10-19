@@ -15,6 +15,21 @@ type PracticeUsecase struct {
 	mistakeRepo  domain.MistakeRepository
 	dashRepo     domain.DashboardRepository
 	entRepo      domain.EntitlementRepository
+	// ticketRepo is nil when tickets are not stored (the in-memory backend);
+	// asking for a ticket then fails rather than serving something else.
+	ticketRepo domain.TicketRepository
+	// signRepo serves sign practice; nil without Postgres.
+	signRepo domain.RoadSignRepository
+}
+
+// SetRoadSignRepository enables practising the questions behind one sign.
+func (u *PracticeUsecase) SetRoadSignRepository(repo domain.RoadSignRepository) {
+	u.signRepo = repo
+}
+
+// SetTicketRepository enables ticket sessions.
+func (u *PracticeUsecase) SetTicketRepository(repo domain.TicketRepository) {
+	u.ticketRepo = repo
 }
 
 func NewPracticeUsecase(
@@ -41,16 +56,22 @@ type CreatePracticeSessionRequest struct {
 	// TestIndex asks for one numbered test of a category: a fixed slice of the
 	// bank rather than a random draw, so Test 7 is the same twenty questions on
 	// every attempt and on every device. 1-based. Ignored without a category.
-	TestIndex     *int `json:"testIndex"`
-	QuestionCount int  `json:"questionCount"`
+	TestIndex *int `json:"testIndex"`
+	// TicketNumber asks for one exam ticket: its questions, in its order.
+	// Category and question count are ignored with it.
+	TicketNumber *int `json:"ticketNumber"`
+	// SignCode asks for the questions that cite one road sign ("3.27").
+	SignCode      *string `json:"signCode"`
+	QuestionCount int     `json:"questionCount"`
 }
 
 type PracticeSessionResponse struct {
-	ID          string                         `json:"id"`
-	Mode        string                         `json:"mode"`
-	PackVersion string                         `json:"packVersion"`
-	TestIndex   *int                           `json:"testIndex,omitempty"`
-	Questions   []domain.ClientQuestionPayload `json:"questions"`
+	ID           string                         `json:"id"`
+	Mode         string                         `json:"mode"`
+	PackVersion  string                         `json:"packVersion"`
+	TestIndex    *int                           `json:"testIndex,omitempty"`
+	TicketNumber *int                           `json:"ticketNumber,omitempty"`
+	Questions    []domain.ClientQuestionPayload `json:"questions"`
 }
 
 func (u *PracticeUsecase) CreateSession(ctx context.Context, userID int64, req CreatePracticeSessionRequest) (*PracticeSessionResponse, error) {
@@ -64,6 +85,40 @@ func (u *PracticeUsecase) CreateSession(ctx context.Context, userID int64, req C
 	pack, err := u.contentRepo.GetPackByID(ctx, req.PackID)
 	if err != nil || pack == nil {
 		return nil, errors.New("question pack not found")
+	}
+
+	if number := req.TicketNumber; number != nil {
+		if u.ticketRepo == nil {
+			return nil, errors.New("tickets are not available")
+		}
+		ticketQuestions, err := u.ticketRepo.GetTicketQuestions(ctx, req.PackID, *number)
+		if err != nil {
+			return nil, err
+		}
+		if len(ticketQuestions) == 0 {
+			return nil, errors.New("no such ticket")
+		}
+		// A ticket spans topics; it is filed under none.
+		req.Category = nil
+		return u.persistSession(ctx, userID, req, pack, ticketQuestions, nil)
+	}
+
+	if code := req.SignCode; code != nil {
+		if u.signRepo == nil {
+			return nil, errors.New("road signs are not available")
+		}
+		signQuestions, err := u.signRepo.SignQuestions(ctx, *code)
+		if err != nil {
+			return nil, err
+		}
+		if len(signQuestions) == 0 {
+			return nil, errors.New("no questions cite this sign")
+		}
+		if len(signQuestions) > 50 {
+			signQuestions = signQuestions[:50]
+		}
+		req.Category = nil
+		return u.persistSession(ctx, userID, req, pack, signQuestions, nil)
 	}
 
 	var questions []*domain.Question
@@ -140,6 +195,7 @@ func (u *PracticeUsecase) persistSession(
 		Locale:         req.Locale,
 		Category:       req.Category,
 		TestIndex:      testIndex,
+		TicketNumber:   req.TicketNumber,
 		Status:         domain.ExamStatusInProgress,
 		TotalQuestions: len(questions),
 		CreatedAt:      time.Now().UTC(),
@@ -156,11 +212,12 @@ func (u *PracticeUsecase) persistSession(
 	}
 
 	return &PracticeSessionResponse{
-		ID:          session.PublicID,
-		Mode:        session.Mode,
-		PackVersion: session.PackVersion,
-		TestIndex:   testIndex,
-		Questions:   clientQuestions,
+		ID:           session.PublicID,
+		Mode:         session.Mode,
+		PackVersion:  session.PackVersion,
+		TestIndex:    testIndex,
+		TicketNumber: req.TicketNumber,
+		Questions:    clientQuestions,
 	}, nil
 }
 

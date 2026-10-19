@@ -25,12 +25,12 @@ func (r *PracticeRepository) CreateSession(ctx context.Context, session *domain.
 	}
 	defer tx.Rollback(ctx)
 
-	querySession := `INSERT INTO practice_sessions (public_id, user_id, mode, pack_id, pack_version, locale, category, test_index, status, total_questions, created_at)
-	                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+	querySession := `INSERT INTO practice_sessions (public_id, user_id, mode, pack_id, pack_version, locale, category, test_index, ticket_number, status, total_questions, created_at)
+	                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	                 RETURNING id`
 	err = tx.QueryRow(ctx, querySession,
 		session.PublicID, session.UserID, session.Mode, session.PackID, session.PackVersion,
-		session.Locale, session.Category, session.TestIndex, session.Status, session.TotalQuestions, session.CreatedAt,
+		session.Locale, session.Category, session.TestIndex, session.TicketNumber, session.Status, session.TotalQuestions, session.CreatedAt,
 	).Scan(&session.ID)
 	if err != nil {
 		return err
@@ -49,13 +49,13 @@ func (r *PracticeRepository) CreateSession(ctx context.Context, session *domain.
 }
 
 func (r *PracticeRepository) GetSessionByPublicID(ctx context.Context, publicID string) (*domain.PracticeSession, error) {
-	query := `SELECT id, public_id, user_id, mode, pack_id, pack_version, locale, category, test_index, status,
+	query := `SELECT id, public_id, user_id, mode, pack_id, pack_version, locale, category, test_index, ticket_number, status,
 	                 total_questions, answered_count, correct_count, created_at, completed_at
 	          FROM practice_sessions WHERE public_id = $1`
 	var s domain.PracticeSession
 	err := r.db.Pool.QueryRow(ctx, query, publicID).Scan(
 		&s.ID, &s.PublicID, &s.UserID, &s.Mode, &s.PackID, &s.PackVersion, &s.Locale,
-		&s.Category, &s.TestIndex, &s.Status, &s.TotalQuestions, &s.AnsweredCount, &s.CorrectCount,
+		&s.Category, &s.TestIndex, &s.TicketNumber, &s.Status, &s.TotalQuestions, &s.AnsweredCount, &s.CorrectCount,
 		&s.CreatedAt, &s.CompletedAt,
 	)
 	if err != nil {

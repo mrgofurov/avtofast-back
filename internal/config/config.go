@@ -67,7 +67,15 @@ type Config struct {
 		WeeklyChallenges  bool `yaml:"weekly_challenges"`
 		VoiceExplanations bool `yaml:"voice_explanations"`
 		AIMistakeAnalysis bool `yaml:"ai_mistake_analysis"`
+		AITutor           bool `yaml:"ai_tutor"`
 	} `yaml:"features"`
+
+	AI struct {
+		// AnthropicAPIKey is read from ANTHROPIC_API_KEY. With the tutor flag on
+		// and no key, the tutor endpoint answers 503 instead of starting.
+		AnthropicAPIKey string `yaml:"-"`
+		TutorModel      string `yaml:"tutor_model"`
+	} `yaml:"ai"`
 
 	Rules struct {
 		ExamQuestionCount int `yaml:"exam_question_count"`
@@ -113,6 +121,8 @@ func Load(path string) (*Config, error) {
 	cfg.JWT.AccessTTL = 24 * time.Hour
 	cfg.JWT.RefreshTTL = 90 * 24 * time.Hour
 	cfg.Firebase.ProjectID = "avtofast-8fba6"
+
+	cfg.AI.TutorModel = "claude-opus-5-5"
 
 	cfg.Rules.ExamQuestionCount = 20
 	cfg.Rules.ExamDurationSec = 1200
@@ -241,6 +251,17 @@ func Load(path string) (*Config, error) {
 	}
 	if f := os.Getenv("FEATURE_AI_MISTAKE_ANALYSIS"); f != "" {
 		cfg.Features.AIMistakeAnalysis = (f == "true" || f == "1")
+	}
+	if f := os.Getenv("FEATURE_AI_TUTOR"); f != "" {
+		cfg.Features.AITutor = (f == "true" || f == "1")
+	}
+
+	// AI tutor
+	if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
+		cfg.AI.AnthropicAPIKey = k
+	}
+	if m := os.Getenv("AI_TUTOR_MODEL"); m != "" {
+		cfg.AI.TutorModel = m
 	}
 
 	// Exam rules

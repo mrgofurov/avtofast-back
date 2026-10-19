@@ -208,6 +208,22 @@ func loadTokens() (string, string) {
 	return "", ""
 }
 
+// deviceID is sent as X-Device-ID, as the Prepdrive web app does: a session
+// is tied to the device it was opened on.
+var deviceID string
+
+func setPrepdriveHeaders(req *http.Request) {
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "uz")
+	req.Header.Set("Origin", "https://account.prepdrive.uz")
+	req.Header.Set("Referer", "https://account.prepdrive.uz/")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36")
+	if deviceID != "" {
+		req.Header.Set("X-Device-ID", deviceID)
+		req.Header.Set("X-Device-Name", "Linux x86_64 - Mozilla/5.0")
+	}
+}
+
 func refreshAccessToken(refreshToken string) (string, string, error) {
 	url := "https://cdn.prepdrive.uz/api/auth/refresh-token"
 	payload := map[string]string{"refresh_token": refreshToken}
@@ -216,10 +232,8 @@ func refreshAccessToken(refreshToken string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("Accept", "application/json")
+	setPrepdriveHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Language", "uz")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
 
 	client := &http.Client{Timeout: 15 * time.Second}
 	resp, err := client.Do(req)
@@ -258,12 +272,16 @@ func main() {
 	refreshShortFlag := flag.String("refresh", "", "Alias for -refresh-token")
 	cookieFlag := flag.String("cookie", "", "Prepdrive Cookie header string")
 	startFlag := flag.Int("start", 1, "Template start ID (default: 1)")
-	endFlag := flag.Int("end", 63, "Template end ID (default: 63)")
+	endFlag := flag.Int("end", 500, "Last template ID to try; the run also stops after 3 missing templates in a row")
 	uploadDirFlag := flag.String("upload-dir", "./uploads", "Base directory for uploads")
 	baseURLFlag := flag.String("base-url", "https://api.avtofast.uz", "Public base URL for uploaded media")
 	packIDFlag := flag.String("pack-id", "uz-theory-2026-09", "Question pack ID")
 	skipMediaFlag := flag.Bool("skip-media", false, "Skip downloading media files and keep original URLs")
+	deviceIDFlag := flag.String("device-id", os.Getenv("PREPDRIVE_DEVICE_ID"), "X-Device-ID of the browser the tokens came from")
+	refetchFlag := flag.Bool("refetch", false, "Re-import questions already in the database (re-downloads their media)")
+	rawDirFlag := flag.String("raw-dir", "./data/prepdrive/uz/test-templates", "Where to keep each template's raw JSON (empty = don't)")
 	flag.Parse()
+	deviceID = *deviceIDFlag
 
 	log := logger.DefaultLogger
 	log.Info("=== Starting AvtoFast Question Importer / Scraper ===")
@@ -359,7 +377,11 @@ func main() {
 	totalImages := 0
 	totalVideos := 0
 
-	for templateID := *startFlag; templateID <= *endFlag; templateID++ {
+	totalSkipped := 0
+	// Templates are numbered without gaps; a few misses in a row mean the
+	// end of the bank, not a hole in it.
+	consecutiveMisses := 0
+	for templateID := *startFlag; templateID <= *endFlag && consecutiveMisses < 3; templateID++ {
 		url := fmt.Sprintf("https://cdn.prepdrive.uz/api/test-templates/%d", templateID)
 		log.Info(fmt.Sprintf("==> [%d/%d] Fetching template %d from %s", templateID, *endFlag, templateID, url))
 
@@ -369,10 +391,8 @@ func main() {
 			continue
 		}
 
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Accept-Language", "uz")
+		setPrepdriveHeaders(req)
 		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
 		if cookie != "" {
 			req.Header.Set("Cookie", cookie)
 		}
@@ -415,6 +435,7 @@ func main() {
 
 		if resp.StatusCode != http.StatusOK {
 			log.Error(fmt.Sprintf("Prepdrive API returned status %d for template %d: %s", resp.StatusCode, templateID, string(bodyBytes)), nil)
+			consecutiveMisses++
 			continue
 		}
 
@@ -426,13 +447,33 @@ func main() {
 
 		if !prepResp.Success || len(prepResp.Data.Questions) == 0 {
 			log.Info(fmt.Sprintf("Template %d has no questions or success=false", templateID))
+			consecutiveMisses++
 			continue
+		}
+		consecutiveMisses = 0
+
+		// The raw response is kept so the bank can be re-imported (or audited)
+		// without asking Prepdrive again.
+		if *rawDirFlag != "" {
+			if err := os.MkdirAll(*rawDirFlag, 0755); err == nil {
+				_ = os.WriteFile(filepath.Join(*rawDirFlag, fmt.Sprintf("%d.json", templateID)), bodyBytes, 0644)
+			}
 		}
 
 		log.Info(fmt.Sprintf("Found %d questions in template %d. Processing...", len(prepResp.Data.Questions), templateID))
 
 		for _, pq := range prepResp.Data.Questions {
 			publicID := fmt.Sprintf("pd_%d", pq.ID)
+
+			// Already imported: leave it, and its media, alone. Re-importing
+			// would download every picture again under a new name and reset
+			// the topic cmd/classify-topics filed it under.
+			if !*refetchFlag {
+				if existing, err := contentRepo.GetQuestionByID(ctx, publicID); err == nil && existing != nil {
+					totalSkipped++
+					continue
+				}
+			}
 
 			// Extract Prompt
 			var promptParts []string
@@ -597,12 +638,20 @@ func main() {
 		time.Sleep(300 * time.Millisecond)
 	}
 
-	// Update question count in master pack
-	pack.QuestionCount = totalSaved
-	_ = contentRepo.UpdatePack(ctx, pack)
+	// The pack counts every question it holds, not just this run's.
+	if counts, err := contentRepo.CountQuestionsByCategory(ctx, pack.PackID); err == nil {
+		total := 0
+		for _, n := range counts {
+			total += n
+		}
+		pack.QuestionCount = total
+		_ = contentRepo.UpdatePack(ctx, pack)
+		log.Info(fmt.Sprintf("Questions in pack %s: %d", pack.PackID, total))
+	}
 
 	log.Info(fmt.Sprintf("=== Scraping & Import Completed! ==="))
 	log.Info(fmt.Sprintf("Total Questions Saved: %d", totalSaved))
+	log.Info(fmt.Sprintf("Already in database (skipped): %d", totalSkipped))
 	log.Info(fmt.Sprintf("Total Images Downloaded: %d", totalImages))
 	log.Info(fmt.Sprintf("Total Videos Downloaded: %d", totalVideos))
 }

@@ -18,3 +18,7 @@ db_*.bak
 *.dump
 *.sql.gz
 uploads/
+# Raw third-party dumps (cmd/prepdrive-dump)
+/data/
+/.prepdrive_tokens.json
+/classify-topics
